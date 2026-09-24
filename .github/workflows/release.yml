@@ -1,0 +1,77 @@
+name: Release emir-agent
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: emir-agent-linux-amd64
+            archive: emir-agent-linux-amd64.tar.gz
+          - os: macos-latest
+            asset: emir-agent-macos-amd64
+            archive: emir-agent-macos-amd64.tar.gz
+          - os: windows-latest
+            asset: emir-agent-windows-amd64.exe
+            archive: emir-agent-windows-amd64.zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build
+        shell: bash
+        working-directory: emir-agent
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          mkdir -p dist
+          export CGO_ENABLED=0
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X github.com/emir/emir-agent/internal/models.Version=$VERSION" -o dist/${{ matrix.asset }} .
+            powershell -Command "Compress-Archive -Path dist/${{ matrix.asset }} -DestinationPath dist/${{ matrix.archive }} -Force"
+          else
+            GOOS=$(if [ "${{ matrix.os }}" = "macos-latest" ]; then echo darwin; else echo linux; fi) GOARCH=amd64 \
+              go build -ldflags "-s -w -X github.com/emir/emir-agent/internal/models.Version=$VERSION" -o dist/${{ matrix.asset }} .
+            tar -czf dist/${{ matrix.archive }} -C dist ${{ matrix.asset }}
+          fi
+          sha256sum dist/${{ matrix.asset }} | awk '{print $1}' > dist/${{ matrix.asset }}.sha256
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: |
+            emir-agent/dist/${{ matrix.asset }}
+            emir-agent/dist/${{ matrix.asset }}.sha256
+            emir-agent/dist/${{ matrix.archive }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
