@@ -1,4 +1,4 @@
-module github.com/emir/emir-agent
+module github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent
 
 go 1.22
 

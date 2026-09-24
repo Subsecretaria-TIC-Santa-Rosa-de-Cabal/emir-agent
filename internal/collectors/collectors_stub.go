@@ -5,7 +5,7 @@ package collectors
 import (
 	"runtime"
 
-	"github.com/emir/emir-agent/internal/models"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
 )
 
 // Collect gathers inventory for unsupported platforms returning a minimal set.

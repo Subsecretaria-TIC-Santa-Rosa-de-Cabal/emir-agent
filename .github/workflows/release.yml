@@ -42,7 +42,6 @@ jobs:
 
       - name: Build
         shell: bash
-        working-directory: emir-agent
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
@@ -54,7 +53,7 @@ jobs:
           mkdir -p dist
           export CGO_ENABLED=0
 
-          go build -ldflags "-s -w -X github.com/emir/emir-agent/internal/models.Version=$VERSION" -o "dist/$ASSET" .
+          go build -ldflags "-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$VERSION" -o "dist/$ASSET" .
 
           if [ "$IS_WINDOWS" = "true" ]; then
             powershell -Command 'Compress-Archive -Path dist\$env:ASSET -DestinationPath dist\$env:ARCHIVE -Force'
@@ -69,9 +68,9 @@ jobs:
         with:
           name: ${{ matrix.asset }}
           path: |
-            emir-agent/dist/${{ matrix.asset }}
-            emir-agent/dist/${{ matrix.asset }}.sha256
-            emir-agent/dist/${{ matrix.archive }}
+            dist/${{ matrix.asset }}
+            dist/${{ matrix.asset }}.sha256
+            dist/${{ matrix.archive }}
 
   release:
     name: Create GitHub Release

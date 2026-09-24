@@ -27,7 +27,7 @@ $BinaryName = "emir-agent-windows-amd64.exe"
 $BinaryPath = Join-Path $OutputDir $BinaryName
 
 Write-Host "Building $BinaryName (version $Version)..."
-go build -ldflags "-s -w -X github.com/emir/emir-agent/internal/models.Version=$Version" -o $BinaryPath $ProjectRoot
+go build -ldflags "-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$Version" -o $BinaryPath $ProjectRoot
 
 if (-not $?) {
     throw "Build failed"

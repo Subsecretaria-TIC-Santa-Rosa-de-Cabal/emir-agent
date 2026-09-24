@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/emir/emir-agent/internal/models"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
 )
 
 // Collect gathers inventory on Linux using /proc, /sys and common CLI tools.

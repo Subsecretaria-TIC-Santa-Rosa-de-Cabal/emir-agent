@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/emir/emir-agent/internal/auth"
-	"github.com/emir/emir-agent/internal/models"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/auth"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
 )
 
 // Prompt asks the technician for core URL and pairing code.

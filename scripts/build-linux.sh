@@ -17,7 +17,7 @@ BINARY_NAME="emir-agent-linux-amd64"
 BINARY_PATH="$OUTPUT_DIR/$BINARY_NAME"
 
 echo "Building $BINARY_NAME (version $VERSION)..."
-go build -ldflags "-s -w -X github.com/emir/emir-agent/internal/models.Version=$VERSION" -o "$BINARY_PATH" "$PROJECT_ROOT"
+go build -ldflags "-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$VERSION" -o "$BINARY_PATH" "$PROJECT_ROOT"
 
 TAR_PATH="$OUTPUT_DIR/$BINARY_NAME.tar.gz"
 tar -czf "$TAR_PATH" -C "$OUTPUT_DIR" "$BINARY_NAME"

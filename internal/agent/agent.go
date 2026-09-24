@@ -6,14 +6,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/emir/emir-agent/internal/api"
-	"github.com/emir/emir-agent/internal/auth"
-	"github.com/emir/emir-agent/internal/collectors"
-	"github.com/emir/emir-agent/internal/config"
-	"github.com/emir/emir-agent/internal/models"
-	"github.com/emir/emir-agent/internal/pairing"
-	"github.com/emir/emir-agent/internal/storage"
-	"github.com/emir/emir-agent/internal/updater"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/api"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/auth"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/collectors"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/config"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/pairing"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/storage"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/updater"
 )
 
 // Agent is the desktop agent runtime.

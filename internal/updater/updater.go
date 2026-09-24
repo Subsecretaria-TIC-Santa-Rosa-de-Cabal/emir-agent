@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/emir/emir-agent/internal/models"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
 )
 
 // Apply downloads the new binary, validates checksum, and triggers replacement.

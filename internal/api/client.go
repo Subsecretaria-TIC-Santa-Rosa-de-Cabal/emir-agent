@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/emir/emir-agent/internal/auth"
-	"github.com/emir/emir-agent/internal/models"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/auth"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
 )
 
 // Client is the authenticated HTTP client used by the agent.

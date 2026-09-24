@@ -9,7 +9,7 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/emir/emir-agent/internal/models"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
 )
 
 const (

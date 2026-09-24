@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/emir/emir-agent/internal/models"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
 )
 
 // Collect gathers full inventory on Windows using PowerShell and WMI.
