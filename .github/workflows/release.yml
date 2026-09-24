@@ -16,12 +16,18 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
             asset: emir-agent-linux-amd64
             archive: emir-agent-linux-amd64.tar.gz
           - os: macos-latest
+            goos: darwin
+            goarch: amd64
             asset: emir-agent-macos-amd64
             archive: emir-agent-macos-amd64.tar.gz
           - os: windows-latest
+            goos: windows
+            goarch: amd64
             asset: emir-agent-windows-amd64.exe
             archive: emir-agent-windows-amd64.zip
 
@@ -37,19 +43,26 @@ jobs:
       - name: Build
         shell: bash
         working-directory: emir-agent
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          ASSET: ${{ matrix.asset }}
+          ARCHIVE: ${{ matrix.archive }}
+          IS_WINDOWS: ${{ matrix.os == 'windows-latest' }}
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           mkdir -p dist
           export CGO_ENABLED=0
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X github.com/emir/emir-agent/internal/models.Version=$VERSION" -o dist/${{ matrix.asset }} .
-            powershell -Command "Compress-Archive -Path dist/${{ matrix.asset }} -DestinationPath dist/${{ matrix.archive }} -Force"
+
+          go build -ldflags "-s -w -X github.com/emir/emir-agent/internal/models.Version=$VERSION" -o "dist/$ASSET" .
+
+          if [ "$IS_WINDOWS" = "true" ]; then
+            powershell -Command 'Compress-Archive -Path dist\$env:ASSET -DestinationPath dist\$env:ARCHIVE -Force'
           else
-            GOOS=$(if [ "${{ matrix.os }}" = "macos-latest" ]; then echo darwin; else echo linux; fi) GOARCH=amd64 \
-              go build -ldflags "-s -w -X github.com/emir/emir-agent/internal/models.Version=$VERSION" -o dist/${{ matrix.asset }} .
-            tar -czf dist/${{ matrix.archive }} -C dist ${{ matrix.asset }}
+            tar -czf "dist/$ARCHIVE" -C dist "$ASSET"
           fi
-          sha256sum dist/${{ matrix.asset }} | awk '{print $1}' > dist/${{ matrix.asset }}.sha256
+
+          sha256sum "dist/$ASSET" | awk '{print $1}' > "dist/$ASSET.sha256"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
