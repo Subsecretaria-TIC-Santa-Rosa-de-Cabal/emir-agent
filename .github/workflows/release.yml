@@ -77,10 +77,19 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Copy install scripts to artifacts
+        run: |
+          cp scripts/install-windows.ps1 artifacts/
+          cp scripts/install-linux.sh artifacts/
+          cp scripts/install-macos.sh artifacts/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

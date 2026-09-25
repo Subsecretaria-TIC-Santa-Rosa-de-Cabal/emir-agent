@@ -3,7 +3,7 @@ set -euo pipefail
 
 CORE_URL="${1:-}"
 VERSION="${2:-0.1.0}"
-REPO="${3:-alcaldia/emir-agent}"
+REPO="${3:-Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent}"
 INSTALL_DIR="${4:-/opt/emir-agent}"
 
 ASSET_NAME="emir-agent-linux-amd64.tar.gz"

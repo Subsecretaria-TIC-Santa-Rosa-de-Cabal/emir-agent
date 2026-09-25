@@ -40,13 +40,13 @@ Agente de escritorio multiplataforma para el sistema EMIR. Se instala en cada PC
 ### Windows (PowerShell como Administrador)
 
 ```powershell
-Invoke-Expression "& { $(Invoke-RestMethod https://github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/releases/download/v0.1.0/install-windows.ps1) } -CoreURL https://core.emir.example.com -Version 0.1.0"
+$version=(Invoke-RestMethod "https://api.github.com/repos/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/releases/latest").tag_name; Invoke-Expression "& { $(Invoke-RestMethod "https://github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/releases/download/$version/install-windows.ps1") } -CoreURL https://api.emir.gov.co -Version $version"
 ```
 
 O descarga y ejecuta manualmente:
 
 ```powershell
-.\scripts\install-windows.ps1 -CoreURL "https://core.emir.example.com" -Version "0.1.0"
+.\scripts\install-windows.ps1 -CoreURL "https://api.emir.gov.co" -Version "latest"
 ```
 
 El script:
@@ -58,25 +58,29 @@ El script:
 ### Linux (como root)
 
 ```bash
-curl -fsSL https://github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/releases/download/v0.1.0/install-linux.sh | bash -s "https://core.emir.example.com" "0.1.0"
+VERSION=$(curl -fsSL https://api.github.com/repos/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/') && \
+curl -fsSL "https://github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/releases/download/${VERSION}/install-linux.sh" | \
+bash -s "https://api.emir.gov.co" "${VERSION#v}"
 ```
 
 O localmente:
 
 ```bash
-bash scripts/install-linux.sh "https://core.emir.example.com" "0.1.0"
+bash scripts/install-linux.sh "https://api.emir.gov.co" "latest"
 ```
 
 ### macOS (como root)
 
 ```bash
-curl -fsSL https://github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/releases/download/v0.1.0/install-macos.sh | bash -s "https://core.emir.example.com" "0.1.0"
+VERSION=$(curl -fsSL https://api.github.com/repos/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/') && \
+curl -fsSL "https://github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/releases/download/${VERSION}/install-macos.sh" | \
+bash -s "https://api.emir.gov.co" "${VERSION#v}"
 ```
 
 O localmente:
 
 ```bash
-bash scripts/install-macos.sh "https://core.emir.example.com" "0.1.0"
+bash scripts/install-macos.sh "https://api.emir.gov.co" "latest"
 ```
 
 ## Configuración

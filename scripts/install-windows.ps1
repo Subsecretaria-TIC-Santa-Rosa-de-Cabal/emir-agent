@@ -17,7 +17,7 @@
 param(
     [string]$CoreURL = "",
     [string]$Version = "0.1.0",
-    [string]$Repo = "alcaldia/emir-agent",
+    [string]$Repo = "Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent",
     [string]$InstallDir = "C:\Program Files\emir-agent"
 )
 
