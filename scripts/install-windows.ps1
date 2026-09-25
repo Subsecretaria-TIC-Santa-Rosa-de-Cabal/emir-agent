@@ -23,13 +23,22 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# GitHub requires TLS 1.2; PowerShell 5.1 defaults to older protocols on some systems.
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Error "This script must be run as Administrator."
     exit 1
 }
 
-$AssetName = "emir-agent-windows-amd64.zip"
-$DownloadURL = "https://github.com/$Repo/releases/download/v$Version/$AssetName"
+# Normalize version so the URL always contains the 'v' prefix.
+$TagVersion = $Version
+if (-not $TagVersion.StartsWith('v')) {
+    $TagVersion = "v$TagVersion"
+}
+
+$AssetName = "emir-agent-windows-amd64.exe"
+$DownloadURL = "https://github.com/$Repo/releases/download/$TagVersion/$AssetName"
 $ServiceName = "emir-agent"
 $ServiceBinary = Join-Path $InstallDir "emir-agent.exe"
 
@@ -44,15 +53,55 @@ if ($ExistingService) {
 $TempDir = Join-Path $env:TEMP "emir-agent-install-$Version"
 New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
 
-Write-Host "Downloading $AssetName from GitHub..."
-$ZipPath = Join-Path $TempDir $AssetName
-Invoke-WebRequest -Uri $DownloadURL -OutFile $ZipPath -UseBasicParsing
+Write-Host "Downloading $AssetName from GitHub ($DownloadURL)..."
+$BinaryPath = Join-Path $TempDir $AssetName
+
+function Download-File {
+    param(
+        [string]$Url,
+        [string]$OutFile
+    )
+
+    $maxAttempts = 3
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -Headers @{
+                'User-Agent' = 'emir-agent-installer'
+            }
+            return
+        } catch {
+            Write-Warning "Download attempt $attempt of $maxAttempts failed: $_"
+            if ($attempt -eq $maxAttempts) {
+                throw $_
+            }
+            Start-Sleep -Seconds 2
+        }
+    }
+}
+
+try {
+    Download-File -Url $DownloadURL -OutFile $BinaryPath
+} catch {
+    Write-Warning "Invoke-WebRequest failed, trying curl.exe..."
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if (-not $curl) {
+        Write-Error "Neither Invoke-WebRequest nor curl.exe is available to download the agent."
+        exit 1
+    }
+    & curl.exe -fsSL -A 'emir-agent-installer' -o $BinaryPath $DownloadURL
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "curl.exe failed to download the agent."
+        exit 1
+    }
+}
+
+if (-not (Test-Path $BinaryPath)) {
+    Write-Error "Downloaded binary was not found at $BinaryPath"
+    exit 1
+}
 
 Write-Host "Extracting to $InstallDir..."
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-Expand-Archive -Path $ZipPath -DestinationPath $InstallDir -Force
-
-$BinaryPath = Join-Path $InstallDir "emir-agent-windows-amd64.exe"
 Move-Item -Path $BinaryPath -Destination $ServiceBinary -Force -ErrorAction SilentlyContinue
 
 # Persist core URL as an environment variable for the service.

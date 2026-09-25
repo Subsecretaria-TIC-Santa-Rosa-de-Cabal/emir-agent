@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/agent"
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/config"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/service"
 )
 
 func main() {
@@ -26,19 +25,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		fmt.Println("shutting down...")
-		cancel()
-	}()
-
 	if pairOnly {
-		if err := ag.PairOnly(ctx); err != nil {
+		if err := ag.PairOnly(context.Background()); err != nil {
 			fmt.Fprintf(os.Stderr, "pair error: %v\n", err)
 			os.Exit(1)
 		}
@@ -46,7 +34,7 @@ func main() {
 		return
 	}
 
-	if err := ag.Run(ctx); err != nil && err != context.Canceled {
+	if err := service.Run(ag); err != nil && err != context.Canceled {
 		fmt.Fprintf(os.Stderr, "agent error: %v\n", err)
 		os.Exit(1)
 	}
