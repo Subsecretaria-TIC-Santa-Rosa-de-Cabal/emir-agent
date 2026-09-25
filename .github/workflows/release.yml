@@ -48,6 +48,7 @@ jobs:
           ASSET: ${{ matrix.asset }}
           ARCHIVE: ${{ matrix.archive }}
           IS_WINDOWS: ${{ matrix.os == 'windows-latest' }}
+          GOTOOLCHAIN: local
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           mkdir -p dist
@@ -68,6 +69,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           ASSET: ${{ matrix.asset }}
+          GOTOOLCHAIN: local
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           if [ "$GOOS" = "windows" ]; then

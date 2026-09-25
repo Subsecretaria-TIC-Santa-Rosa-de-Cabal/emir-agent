@@ -18,13 +18,13 @@ mkdir -p "$DIST_DIR"
 
 echo "Building old agent version $OLD_VERSION..."
 OLD_BINARY="$DIST_DIR/emir-agent-old"
-GOOS=$(go env GOOS) GOARCH=$(go env GOARCH) go build \
+GOOS=$(go env GOOS) GOARCH=$(go env GOARCH) GOTOOLCHAIN=local go build \
     -ldflags "-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$OLD_VERSION" \
     -o "$OLD_BINARY" "$REPO_ROOT"
 
 echo "Building new agent version $NEW_VERSION..."
 NEW_BINARY="$DIST_DIR/emir-agent-new"
-GOOS=$(go env GOOS) GOARCH=$(go env GOARCH) go build \
+GOOS=$(go env GOOS) GOARCH=$(go env GOARCH) GOTOOLCHAIN=local go build \
     -ldflags "-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$NEW_VERSION" \
     -o "$NEW_BINARY" "$REPO_ROOT"
 

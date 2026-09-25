@@ -12,6 +12,7 @@ mkdir -p "$OUTPUT_DIR"
 export GOOS=linux
 export GOARCH=amd64
 export CGO_ENABLED=0
+export GOTOOLCHAIN=local
 
 BINARY_NAME="emir-agent-linux-amd64"
 BINARY_PATH="$OUTPUT_DIR/$BINARY_NAME"

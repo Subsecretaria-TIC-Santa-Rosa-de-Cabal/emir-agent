@@ -24,10 +24,12 @@ New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 
 Write-Host "Building old agent version $OldVersion..."
 $OldBinary = Join-Path $DistDir "emir-agent-old.exe"
+$Env:GOTOOLCHAIN = "local"
 go build -ldflags "-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$OldVersion" -o $OldBinary $RepoRoot
 
 Write-Host "Building new agent version $NewVersion..."
 $NewBinary = Join-Path $DistDir "emir-agent-new.exe"
+$Env:GOTOOLCHAIN = "local"
 go build -ldflags "-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$NewVersion" -o $NewBinary $RepoRoot
 
 $Checksum = (Get-FileHash $NewBinary -Algorithm SHA256).Hash.ToLower()

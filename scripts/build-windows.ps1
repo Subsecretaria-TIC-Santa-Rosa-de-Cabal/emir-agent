@@ -22,6 +22,7 @@ if (-not (Test-Path $OutputDir)) {
 $Env:GOOS = "windows"
 $Env:GOARCH = "amd64"
 $Env:CGO_ENABLED = "0"
+$Env:GOTOOLCHAIN = "local"
 
 $BinaryName = "emir-agent-windows-amd64.exe"
 $BinaryPath = Join-Path $OutputDir $BinaryName
