@@ -63,6 +63,24 @@ jobs:
 
           sha256sum "dist/$ASSET" | awk '{print $1}' > "dist/$ASSET.sha256"
 
+      - name: Verify compiled version
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          ASSET: ${{ matrix.asset }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          if [ "$GOOS" = "windows" ]; then
+            OUTPUT=$(powershell -Command '& dist\$env:ASSET --version')
+          else
+            OUTPUT=$(./dist/$ASSET --version)
+          fi
+          echo "Compiled version: $OUTPUT"
+          if [ "$OUTPUT" != "$VERSION" ]; then
+            echo "Expected version $VERSION, got $OUTPUT"
+            exit 1
+          fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

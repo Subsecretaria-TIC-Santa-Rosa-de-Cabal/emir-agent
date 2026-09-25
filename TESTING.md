@@ -93,6 +93,10 @@ El script:
 4. Verificar que el servicio se detiene, el binario se reemplaza y el servicio vuelve a iniciar.
 5. Si falla en Windows, revisar `C:\Program Files\emir-agent\update.log`.
 
+#### Protección contra bucles
+
+El agente guarda la última versión a la que intentó actualizarse en `state.json`. Si un release se compila sin el `-ldflags` correcto y el binario reporta `0.1.0`, el agente usa la versión recordada en `state.json` para no volver a intentar la misma actualización indefinidamente.
+
 ### 4. Plataformas
 
 Repetir las pruebas anteriores en:

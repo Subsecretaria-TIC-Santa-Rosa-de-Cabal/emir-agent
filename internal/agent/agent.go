@@ -46,6 +46,8 @@ func (a *Agent) PairOnly(ctx context.Context) error {
 
 // Run starts the agent lifecycle.
 func (a *Agent) Run(ctx context.Context) error {
+	fmt.Printf("emir-agent %s starting...\n", models.Version)
+
 	state, err := a.stateRepo.Load()
 	if err != nil {
 		return fmt.Errorf("load state: %w", err)
@@ -56,6 +58,14 @@ func (a *Agent) Run(ctx context.Context) error {
 			return fmt.Errorf("pair: %w", err)
 		}
 	} else {
+		// Defensive: if the state remembers a version newer than the binary's
+		// compiled default, use it. This prevents update loops when a release
+		// build is missing the -ldflags version override.
+		if state.Version != "" && models.CompareVersions(state.Version, models.Version) > 0 {
+			fmt.Printf("using version from state: %s (binary default: %s)\n", state.Version, models.Version)
+			models.Version = state.Version
+		}
+
 		if err := a.loadAuth(state); err != nil {
 			return fmt.Errorf("load auth: %w", err)
 		}
@@ -191,6 +201,15 @@ func (a *Agent) cycle(ctx context.Context) error {
 		}
 		if versionResp.IsMandatory {
 			fmt.Printf("applying mandatory update from %s...\n", downloadURL)
+			// Remember the target version before attempting the update. If the
+			// new binary is built without the correct -ldflags version override,
+			// this prevents an infinite update loop on restart.
+			if state, err := a.stateRepo.Load(); err == nil && state != nil {
+				state.Version = versionResp.Version
+				if saveErr := a.stateRepo.Save(state); saveErr != nil {
+					fmt.Fprintf(os.Stderr, "failed to save target version: %v\n", saveErr)
+				}
+			}
 			if err := updater.Apply(*versionResp); err != nil {
 				return fmt.Errorf("apply update: %w", err)
 			}
