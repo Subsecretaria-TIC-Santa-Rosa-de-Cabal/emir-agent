@@ -62,6 +62,12 @@ go vet ./...
 | `EMIR_CORE_URL` | `http://localhost:8000` | Base URL of `emir-core` |
 | `EMIR_STATE_PATH` | OS config dir (`%APPDATA%`/`.config`/Library) | Local `state.json` path |
 
+The install scripts override `EMIR_STATE_PATH` to a machine-wide directory so the service account can read the state and credentials created during interactive pairing:
+
+- Windows: `C:\ProgramData\emir-agent\state.json`
+- Linux: `/var/lib/emir-agent/state.json`
+- macOS: `/Library/Application Support/emir-agent/state.json`
+
 ## Authentication
 
 Each agent generates an Ed25519 key pair during pairing. The public key is sent to `/api/agent/pair`. Subsequent requests are signed with the private key:

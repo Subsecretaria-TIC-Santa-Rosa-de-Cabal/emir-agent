@@ -9,6 +9,8 @@ INSTALL_DIR="${4:-/usr/local/bin}"
 ASSET_NAME="emir-agent-macos-amd64.tar.gz"
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/v$VERSION/$ASSET_NAME"
 SERVICE_NAME="com.emir.agent"
+STATE_DIR="/Library/Application Support/emir-agent"
+STATE_PATH="$STATE_DIR/state.json"
 
 if [ "$EUID" -ne 0 ]; then
     echo "This script must be run as root."
@@ -32,6 +34,13 @@ if [ -n "$CORE_URL" ]; then
     launchctl setenv EMIR_CORE_URL "$CORE_URL"
 fi
 
+# Use a machine-wide state directory so the launchd job can access the same
+# state and credentials created during interactive pairing.
+mkdir -p "$STATE_DIR"
+chmod 700 "$STATE_DIR"
+launchctl setenv EMIR_STATE_PATH "$STATE_PATH"
+export EMIR_STATE_PATH="$STATE_PATH"
+
 echo "Pairing the agent with emir-core..."
 "$INSTALL_DIR/emir-agent" --pair
 
@@ -51,6 +60,11 @@ cat > /Library/LaunchDaemons/$SERVICE_NAME.plist <<EOF
     <array>
         <string>$INSTALL_DIR/emir-agent</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>EMIR_STATE_PATH</key>
+        <string>$STATE_PATH</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

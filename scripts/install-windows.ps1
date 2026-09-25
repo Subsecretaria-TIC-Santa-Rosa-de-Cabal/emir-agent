@@ -41,6 +41,8 @@ $AssetName = "emir-agent-windows-amd64.exe"
 $DownloadURL = "https://github.com/$Repo/releases/download/$TagVersion/$AssetName"
 $ServiceName = "emir-agent"
 $ServiceBinary = Join-Path $InstallDir "emir-agent.exe"
+$StateDir = Join-Path $env:PROGRAMDATA "emir-agent"
+$StatePath = Join-Path $StateDir "state.json"
 
 # Stop/remove any existing service so the binary can be replaced.
 $ExistingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
@@ -109,6 +111,12 @@ if ($CoreURL -ne "") {
     [Environment]::SetEnvironmentVariable("EMIR_CORE_URL", $CoreURL, "Machine")
     $env:EMIR_CORE_URL = $CoreURL
 }
+
+# Use a machine-wide state directory so the service (running as SYSTEM) can
+# access the same state and credentials created during interactive pairing.
+[Environment]::SetEnvironmentVariable("EMIR_STATE_PATH", $StatePath, "Machine")
+$env:EMIR_STATE_PATH = $StatePath
+New-Item -ItemType Directory -Path $StateDir -Force | Out-Null
 
 # Pair interactively before running as a service.
 Write-Host "`nPairing the agent with emir-core..."

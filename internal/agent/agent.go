@@ -30,7 +30,7 @@ type Agent struct {
 // New builds a new Agent.
 func New(cfg *config.Config) (*Agent, error) {
 	stateRepo := storage.NewStateRepository(cfg.StatePath)
-	tokenStore := storage.NewSecureTokenStorage()
+	tokenStore := storage.NewSecureTokenStorage(cfg.StatePath)
 
 	return &Agent{
 		config:     cfg,
@@ -47,6 +47,7 @@ func (a *Agent) PairOnly(ctx context.Context) error {
 // Run starts the agent lifecycle.
 func (a *Agent) Run(ctx context.Context) error {
 	fmt.Printf("emir-agent %s starting...\n", models.Version)
+	fmt.Printf("state path: %s\n", a.config.StatePath)
 
 	state, err := a.stateRepo.Load()
 	if err != nil {

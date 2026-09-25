@@ -7,61 +7,65 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zalando/go-keyring"
-
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
 )
 
-const (
-	keyringService = "emir-agent"
-	keyringUser    = "agent-credentials"
-)
-
-// secureCredentials is the payload stored in the OS credential store.
+// secureCredentials is the payload persisted to disk.
 type secureCredentials struct {
-	Token        string `json:"token"`
+	Token         string `json:"token"`
 	PrivateKeyB64 string `json:"private_key_b64"`
 }
 
-// SecureTokenStorage abstracts the OS credential store.
+// SecureTokenStorage persists agent credentials to a file in the same
+// directory as the local state file. This makes credentials accessible to
+// the service account (e.g., Windows SYSTEM) that runs the agent, avoiding
+// per-user OS credential store limitations.
 type SecureTokenStorage struct {
-	service string
-	user    string
+	path string
 }
 
-// NewSecureTokenStorage returns a token-backed credential manager.
-func NewSecureTokenStorage() *SecureTokenStorage {
+// NewSecureTokenStorage returns a file-backed credential manager.
+// statePath is used to derive the credentials file location.
+func NewSecureTokenStorage(statePath string) *SecureTokenStorage {
 	return &SecureTokenStorage{
-		service: keyringService,
-		user:    keyringUser,
+		path: filepath.Join(filepath.Dir(statePath), "credentials.json"),
 	}
 }
 
-// Store saves the agent token and private key in the OS credential store.
+// Store saves the agent token and private key to disk.
 func (s *SecureTokenStorage) Store(token string, privateKey []byte) error {
 	creds := secureCredentials{
 		Token:         token,
 		PrivateKeyB64: base64.StdEncoding.EncodeToString(privateKey),
 	}
-	data, err := json.Marshal(creds)
+	data, err := json.MarshalIndent(creds, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal credentials: %w", err)
 	}
-	return keyring.Set(s.service, s.user, string(data))
+
+	dir := filepath.Dir(s.path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("create credentials dir: %w", err)
+	}
+
+	if err := os.WriteFile(s.path, data, 0600); err != nil {
+		return fmt.Errorf("write credentials file: %w", err)
+	}
+	return nil
 }
 
-// Retrieve reads the agent token and private key from the OS credential store.
+// Retrieve reads the agent token and private key from disk.
 func (s *SecureTokenStorage) Retrieve() (token string, privateKey []byte, err error) {
-	data, err := keyring.Get(s.service, s.user)
+	data, err := os.ReadFile(s.path)
 	if err != nil {
-		if err == keyring.ErrNotFound {
+		if os.IsNotExist(err) {
 			return "", nil, nil
 		}
-		return "", nil, err
+		return "", nil, fmt.Errorf("read credentials file: %w", err)
 	}
 
 	var creds secureCredentials
-	if err := json.Unmarshal([]byte(data), &creds); err != nil {
+	if err := json.Unmarshal(data, &creds); err != nil {
 		return "", nil, fmt.Errorf("unmarshal credentials: %w", err)
 	}
 
@@ -73,9 +77,12 @@ func (s *SecureTokenStorage) Retrieve() (token string, privateKey []byte, err er
 	return creds.Token, privateKey, nil
 }
 
-// Delete removes the agent credentials from the OS credential store.
+// Delete removes the persisted credentials file.
 func (s *SecureTokenStorage) Delete() error {
-	return keyring.Delete(s.service, s.user)
+	if err := os.Remove(s.path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove credentials file: %w", err)
+	}
+	return nil
 }
 
 // StateRepository persists non-secret local state to disk.
@@ -123,7 +130,7 @@ func (r *StateRepository) Save(state *models.AgentState) error {
 	return nil
 }
 
-// Clear removes both the local state file and the secure token.
+// Clear removes both the local state file and the secure token file.
 func (r *StateRepository) Clear(tokenStore *SecureTokenStorage) error {
 	_ = tokenStore.Delete()
 	if err := os.Remove(r.path); err != nil && !os.IsNotExist(err) {
