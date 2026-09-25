@@ -107,15 +107,60 @@ func spawnUpdater(currentPath, newBinaryPath string) error {
 }
 
 func spawnWindowsUpdater(currentPath, newBinaryPath string) error {
+	logPath := filepath.Join(filepath.Dir(currentPath), "update.log")
 	script := fmt.Sprintf(`
 $ErrorActionPreference = "Stop"
-Start-Sleep -Seconds 2
-$service = Get-Service -Name "emir-agent" -ErrorAction SilentlyContinue
-if ($service) { Stop-Service -Name "emir-agent" -Force }
-Move-Item -Path "%s" -Destination "%s" -Force
-if ($service) { Start-Service -Name "emir-agent" } else { & "%s" }
-Remove-Item -Path "%s" -Recurse -Force
-`, newBinaryPath, currentPath, currentPath, filepath.Dir(newBinaryPath))
+$log = "%s"
+function Write-Log($msg) {
+    $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg"
+    Add-Content -Path $log -Value $line -ErrorAction SilentlyContinue
+}
+
+try {
+    Write-Log "Starting agent update: replacing $('%s') with $('%s')"
+    Start-Sleep -Seconds 2
+
+    $service = Get-Service -Name "emir-agent" -ErrorAction SilentlyContinue
+    if ($service) {
+        Write-Log "Stopping emir-agent service"
+        Stop-Service -Name "emir-agent" -Force -ErrorAction Stop
+        $service.WaitForStatus("Stopped", "00:00:30")
+        Write-Log "Service stopped"
+    }
+
+    $moved = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        try {
+            Move-Item -Path "%s" -Destination "%s" -Force -ErrorAction Stop
+            $moved = $true
+            break
+        } catch {
+            Write-Log "Move attempt $i failed: $_"
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    if (-not $moved) {
+        throw "Could not replace binary after 30 attempts"
+    }
+    Write-Log "Binary replaced"
+
+    if ($service) {
+        Write-Log "Starting emir-agent service"
+        Start-Service -Name "emir-agent" -ErrorAction Stop
+        $service.WaitForStatus("Running", "00:00:30")
+        Write-Log "Service started"
+    } else {
+        Write-Log "No service found; starting binary directly"
+        & "%s"
+    }
+} catch {
+    Write-Log "ERROR: $_"
+    throw
+} finally {
+    Start-Sleep -Seconds 1
+    Remove-Item -Path "%s" -Recurse -Force -ErrorAction SilentlyContinue
+}
+`, logPath, newBinaryPath, currentPath, newBinaryPath, currentPath, currentPath, filepath.Dir(newBinaryPath))
 
 	scriptPath := filepath.Join(filepath.Dir(newBinaryPath), "update.ps1")
 	if err := os.WriteFile(scriptPath, []byte(script), 0644); err != nil {
@@ -123,18 +168,42 @@ Remove-Item -Path "%s" -Recurse -Force
 	}
 
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptPath)
-	return cmd.Start()
+	return startDetached(cmd)
 }
 
 func spawnLinuxUpdater(currentPath, newBinaryPath string) error {
+	logPath := filepath.Join(filepath.Dir(currentPath), "update.log")
 	script := fmt.Sprintf(`#!/bin/sh
+set -e
+LOG="%s"
+log() { echo "$(date '%%Y-%%m-%%d %%H:%%M:%%S') $1" >> "$LOG"; }
+
+trap 'log "ERROR on line $LINENO"' ERR
+
+log "Starting agent update: replacing %s with %s"
 sleep 2
+
+log "Stopping emir-agent service"
 systemctl stop emir-agent || true
+for i in $(seq 1 30); do
+    if ! systemctl is-active --quiet emir-agent 2>/dev/null; then
+        break
+    fi
+    log "Waiting for service to stop (attempt $i)"
+    sleep 0.5
+done
+
 mv -f "%s" "%s"
 chmod +x "%s"
+log "Binary replaced"
+
+log "Starting emir-agent service"
 systemctl start emir-agent
+log "Service started"
+
+sleep 1
 rm -rf "%s"
-`, newBinaryPath, currentPath, currentPath, filepath.Dir(newBinaryPath))
+`, logPath, newBinaryPath, currentPath, newBinaryPath, currentPath, currentPath, filepath.Dir(newBinaryPath))
 
 	scriptPath := filepath.Join(filepath.Dir(newBinaryPath), "update.sh")
 	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
@@ -142,18 +211,36 @@ rm -rf "%s"
 	}
 
 	cmd := exec.Command("sh", scriptPath)
-	return cmd.Start()
+	return startDetached(cmd)
 }
 
 func spawnDarwinUpdater(currentPath, newBinaryPath string) error {
+	logPath := filepath.Join(filepath.Dir(currentPath), "update.log")
 	script := fmt.Sprintf(`#!/bin/sh
+set -e
+LOG="%s"
+log() { echo "$(date '%%Y-%%m-%%d %%H:%%M:%%S') $1" >> "$LOG"; }
+
+trap 'log "ERROR on line $LINENO"' ERR
+
+log "Starting agent update: replacing %s with %s"
 sleep 2
-launchctl unload /Library/LaunchDaemons/com.emir.agent.plist || true
+
+log "Unloading emir-agent launchd job"
+launchctl unload /Library/LaunchDaemons/com.emir.agent.plist 2>/dev/null || true
+sleep 1
+
 mv -f "%s" "%s"
 chmod +x "%s"
+log "Binary replaced"
+
+log "Loading emir-agent launchd job"
 launchctl load /Library/LaunchDaemons/com.emir.agent.plist
+log "Service started"
+
+sleep 1
 rm -rf "%s"
-`, newBinaryPath, currentPath, currentPath, filepath.Dir(newBinaryPath))
+`, logPath, newBinaryPath, currentPath, newBinaryPath, currentPath, currentPath, filepath.Dir(newBinaryPath))
 
 	scriptPath := filepath.Join(filepath.Dir(newBinaryPath), "update.sh")
 	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
@@ -161,5 +248,5 @@ rm -rf "%s"
 	}
 
 	cmd := exec.Command("sh", scriptPath)
-	return cmd.Start()
+	return startDetached(cmd)
 }

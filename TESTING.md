@@ -35,6 +35,15 @@ go test ./...
 - Un `Computer` registrado en el backend.
 - Acceso de administrador en la PC donde se instalará el agente.
 
+### 0. Verificar versión compilada
+
+```powershell
+# Windows
+.\emir-agent.exe --version
+```
+
+Debe imprimir la versión inyectada por el release (por ejemplo `0.3.3`), no `0.1.0`.
+
 ### 1. Vinculación
 
 ```powershell
@@ -58,10 +67,31 @@ Verificar logs o consola:
 
 ### 3. Auto-update
 
+#### Local (sin publicar en GitHub)
+
+```powershell
+# Windows
+.\scripts\test-update.ps1 -CoreURL http://localhost:8000 -OldVersion 0.3.0 -NewVersion 0.3.5
+```
+
+```bash
+# Linux / macOS
+bash scripts/test-update.sh http://localhost:8000 0.3.0 0.3.5
+```
+
+El script:
+1. Construye dos binarios (versión vieja y nueva).
+2. Levanta un servidor HTTP local con el binario nuevo.
+3. Imprime el SQL para registrar la versión fake en `emir-core`.
+4. Ejecuta el binario viejo para observar el update.
+
+#### En producción
+
 1. Publicar release `v0.2.0` en GitHub.
 2. Registrar release en `emir-core` con `is_mandatory = true`.
 3. Reiniciar el agente o esperar el ciclo de 10 min.
 4. Verificar que el servicio se detiene, el binario se reemplaza y el servicio vuelve a iniciar.
+5. Si falla en Windows, revisar `C:\Program Files\emir-agent\update.log`.
 
 ### 4. Plataformas
 

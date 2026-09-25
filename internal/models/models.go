@@ -1,7 +1,8 @@
 package models
 
 // Version is the current agent version.
-const Version = "0.1.0"
+// It is a var (not a const) so release builds can override it via -ldflags.
+var Version = "0.1.0"
 
 // AgentComputerInventory mirrors emir-core AgentComputerInventory.
 type AgentComputerInventory struct {

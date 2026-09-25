@@ -37,6 +37,9 @@ go run . --pair
 # Run the agent loop
 go run .
 
+# Print compiled version
+go run . --version
+
 # Build current platform
 go build -o emir-agent .
 
@@ -76,6 +79,22 @@ The token and private key seed are stored in the OS credential store (Windows Cr
 3. GitHub Actions builds per-platform binaries and creates a Release.
 4. Register the release in `emir-core` (`agent_releases` table) including Windows, Linux and macOS assets.
 5. Agents detect the new version on the next 10-minute poll and auto-update if `is_mandatory` is true.
+
+## Testing Auto-Update Locally
+
+Use the helper scripts to simulate a new release without publishing to GitHub:
+
+```powershell
+# Windows
+.\scripts\test-update.ps1 -CoreURL http://localhost:8000 -OldVersion 0.3.0 -NewVersion 0.3.5
+```
+
+```bash
+# Linux / macOS
+bash scripts/test-update.sh http://localhost:8000 0.3.0 0.3.5
+```
+
+The script builds two binaries, starts a local HTTP server, and prints the SQL to register the fake release in `emir-core`. Run the old binary, watch it detect the update, replace itself, and restart.
 
 ## Conventions
 

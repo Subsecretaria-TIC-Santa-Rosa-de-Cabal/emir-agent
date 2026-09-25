@@ -7,10 +7,16 @@ import (
 
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/agent"
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/config"
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/service"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		fmt.Println(models.Version)
+		return
+	}
+
 	pairOnly := len(os.Args) > 1 && os.Args[1] == "--pair"
 
 	cfg, err := config.Load()
