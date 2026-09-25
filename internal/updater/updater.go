@@ -16,7 +16,7 @@ import (
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
 )
 
-// Apply downloads the new binary, validates checksum, and triggers replacement.
+// Apply downloads the new binary for the current platform, validates checksum, and triggers replacement.
 func Apply(versionResp models.AgentVersionResponse) error {
 	currentPath, err := os.Executable()
 	if err != nil {
@@ -27,17 +27,22 @@ func Apply(versionResp models.AgentVersionResponse) error {
 		return fmt.Errorf("eval symlinks: %w", err)
 	}
 
+	downloadURL, checksum, ok := versionResp.AssetForPlatform(runtime.GOOS)
+	if !ok {
+		return fmt.Errorf("no asset available for platform %s", runtime.GOOS)
+	}
+
 	tempDir, err := os.MkdirTemp("", "emir-agent-update-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
 
 	newBinaryPath := filepath.Join(tempDir, filepath.Base(currentPath)+".new")
-	if err := download(versionResp.DownloadURL, newBinaryPath); err != nil {
+	if err := download(downloadURL, newBinaryPath); err != nil {
 		return fmt.Errorf("download update: %w", err)
 	}
 
-	if err := verifyChecksum(newBinaryPath, versionResp.Checksum); err != nil {
+	if err := verifyChecksum(newBinaryPath, checksum); err != nil {
 		return fmt.Errorf("checksum mismatch: %w", err)
 	}
 

@@ -133,13 +133,42 @@ type AgentHeartbeatResponse struct {
 	NextPollInSeconds  int    `json:"next_poll_in_seconds"`
 }
 
+// AgentVersionAsset groups the download URL and checksum for a specific platform.
+type AgentVersionAsset struct {
+	Platform    string `json:"platform"`
+	DownloadURL string `json:"download_url"`
+	Checksum    string `json:"checksum"`
+}
+
 // AgentVersionResponse mirrors emir-core AgentVersionResponse.
 type AgentVersionResponse struct {
-	Version      string  `json:"version"`
-	DownloadURL  string  `json:"download_url"`
-	Checksum     string  `json:"checksum"`
-	IsMandatory  bool    `json:"is_mandatory"`
-	ReleaseNotes *string `json:"release_notes,omitempty"`
+	Version            string  `json:"version"`
+	DownloadURL        string  `json:"download_url"`
+	Checksum           string  `json:"checksum"`
+	LinuxDownloadURL   *string `json:"linux_download_url,omitempty"`
+	LinuxChecksum      *string `json:"linux_checksum,omitempty"`
+	MacOSDownloadURL   *string `json:"macos_download_url,omitempty"`
+	MacOSChecksum      *string `json:"macos_checksum,omitempty"`
+	IsMandatory        bool    `json:"is_mandatory"`
+	ReleaseNotes       *string `json:"release_notes,omitempty"`
+}
+
+// AssetForPlatform returns the download URL and checksum for the given platform.
+// Supported platforms: windows, linux, darwin (macOS).
+func (r *AgentVersionResponse) AssetForPlatform(platform string) (downloadURL, checksum string, ok bool) {
+	switch platform {
+	case "windows":
+		return r.DownloadURL, r.Checksum, r.DownloadURL != "" && r.Checksum != ""
+	case "linux":
+		if r.LinuxDownloadURL != nil && r.LinuxChecksum != nil {
+			return *r.LinuxDownloadURL, *r.LinuxChecksum, true
+		}
+	case "darwin":
+		if r.MacOSDownloadURL != nil && r.MacOSChecksum != nil {
+			return *r.MacOSDownloadURL, *r.MacOSChecksum, true
+		}
+	}
+	return "", "", false
 }
 
 // AgentState is persisted locally between runs.

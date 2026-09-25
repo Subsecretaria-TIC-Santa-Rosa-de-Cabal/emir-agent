@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/api"
@@ -180,16 +181,23 @@ func (a *Agent) cycle(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("version check: %w", err)
 	}
+
+	downloadURL, checksum, hasAsset := versionResp.AssetForPlatform(runtime.GOOS)
 	if versionResp.Version != models.Version {
 		fmt.Printf("new agent version available: %s (current: %s)\n", versionResp.Version, models.Version)
+		if !hasAsset {
+			fmt.Printf("no asset available for platform %s, skipping auto-update\n", runtime.GOOS)
+			return nil
+		}
 		if versionResp.IsMandatory {
-			fmt.Println("applying mandatory update...")
+			fmt.Printf("applying mandatory update from %s...\n", downloadURL)
 			if err := updater.Apply(*versionResp); err != nil {
 				return fmt.Errorf("apply update: %w", err)
 			}
 			// The updater script will replace the binary and restart the service.
 			return nil
 		}
+		fmt.Printf("optional update available (checksum: %s)\n", checksum)
 	}
 
 	return nil
