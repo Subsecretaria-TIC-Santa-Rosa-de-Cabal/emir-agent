@@ -3,7 +3,8 @@
 .SYNOPSIS
     Build script for emir-agent on Windows.
 .DESCRIPTION
-    Cross-compiles emir-agent for Windows amd64 and packages it into a zip.
+    Cross-compiles emir-agent and emir-agent-popup for Windows amd64 and packages
+    both binaries into a zip.
 #>
 param(
     [string]$Version = "0.1.0",
@@ -21,17 +22,27 @@ if (-not (Test-Path $OutputDir)) {
 
 $Env:GOOS = "windows"
 $Env:GOARCH = "amd64"
-$Env:CGO_ENABLED = "0"
 $Env:GOTOOLCHAIN = "local"
 
-$BinaryName = "emir-agent-windows-amd64.exe"
-$BinaryPath = Join-Path $OutputDir $BinaryName
+$AgentBinaryName = "emir-agent-windows-amd64.exe"
+$AgentBinaryPath = Join-Path $OutputDir $AgentBinaryName
+$PopupBinaryName = "emir-agent-popup-windows-amd64.exe"
+$PopupBinaryPath = Join-Path $OutputDir $PopupBinaryName
 
-Write-Host "Building $BinaryName (version $Version)..."
-go build -ldflags "-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$Version" -o $BinaryPath $ProjectRoot
+$Ldflags = "-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$Version"
+$PopupLdflags = "-s -w -X main.Version=$Version"
 
+Write-Host "Building $AgentBinaryName (version $Version)..."
+$Env:CGO_ENABLED = "0"
+go build -ldflags "$Ldflags" -o $AgentBinaryPath $ProjectRoot
 if (-not $?) {
-    throw "Build failed"
+    throw "Agent build failed"
+}
+
+Write-Host "Building $PopupBinaryName (version $Version)..."
+go build -ldflags "$PopupLdflags" -o $PopupBinaryPath (Join-Path $ProjectRoot "cmd\popup")
+if (-not $?) {
+    throw "Popup build failed"
 }
 
 $BootScript = Join-Path $PSScriptRoot "update-at-boot.ps1"
@@ -39,13 +50,18 @@ $BootScriptDest = Join-Path $OutputDir "update-at-boot.ps1"
 Copy-Item -Path $BootScript -Destination $BootScriptDest -Force
 
 $ZipPath = Join-Path $OutputDir "emir-agent-windows-amd64.zip"
-Compress-Archive -Path $BinaryPath, $BootScriptDest -DestinationPath $ZipPath -Force
+Compress-Archive -Path $AgentBinaryPath, $PopupBinaryPath, $BootScriptDest -DestinationPath $ZipPath -Force
 
-Write-Host "Built: $BinaryPath"
+Write-Host "Built: $AgentBinaryPath"
+Write-Host "Built: $PopupBinaryPath"
 Write-Host "Packaged: $ZipPath"
 Write-Host "Included: $BootScriptDest"
 
-# Compute checksum
-$Hash = (Get-FileHash -Path $BinaryPath -Algorithm SHA256).Hash.ToLower()
-$Hash | Set-Content -Path "$BinaryPath.sha256" -NoNewline
-Write-Host "Checksum: $Hash"
+# Compute checksums
+$AgentHash = (Get-FileHash -Path $AgentBinaryPath -Algorithm SHA256).Hash.ToLower()
+$AgentHash | Set-Content -Path "$AgentBinaryPath.sha256" -NoNewline
+Write-Host "Agent checksum: $AgentHash"
+
+$PopupHash = (Get-FileHash -Path $PopupBinaryPath -Algorithm SHA256).Hash.ToLower()
+$PopupHash | Set-Content -Path "$PopupBinaryPath.sha256" -NoNewline
+Write-Host "Popup checksum: $PopupHash"

@@ -2,11 +2,8 @@ package agent
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"runtime"
 	"time"
 
@@ -128,17 +125,6 @@ func (a *Agent) RunUpdateCheck(ctx context.Context) (bool, error) {
 	return a.CheckAndUpdate(ctx)
 }
 
-// ShowAnnouncement initializes the agent (if needed) and displays a popup for
-// the given announcement. It is used by the --show-announcement CLI flag.
-func (a *Agent) ShowAnnouncement(ctx context.Context, ann models.AgentAnnouncement) error {
-	if a.apiClient == nil {
-		if err := a.initialize(ctx, false); err != nil {
-			return err
-		}
-	}
-	return announcements.Show(ctx, a.apiClient, ann)
-}
-
 func (a *Agent) showAnnouncements(ctx context.Context) error {
 	if a.apiClient == nil {
 		return fmt.Errorf("api client not initialized")
@@ -162,19 +148,7 @@ func (a *Agent) showAnnouncements(ctx context.Context) error {
 }
 
 func (a *Agent) spawnAnnouncementViewer(ann models.AgentAnnouncement) error {
-	payload, err := json.Marshal(ann)
-	if err != nil {
-		return fmt.Errorf("marshal announcement: %w", err)
-	}
-
-	encoded := base64.StdEncoding.EncodeToString(payload)
-	currentPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("get executable: %w", err)
-	}
-
-	cmd := exec.Command(currentPath, "--show-announcement", encoded)
-	return updater.StartDetached(cmd)
+	return announcements.SpawnAnnouncementViewer(ann)
 }
 
 // CheckAndUpdate consults emir-core for a newer agent version and applies a

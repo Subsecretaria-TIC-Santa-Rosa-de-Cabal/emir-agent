@@ -33,7 +33,9 @@ echo "Extracting to $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 tar -xzf "$TMP_DIR/$ASSET_NAME" -C "$INSTALL_DIR"
 mv -f "$INSTALL_DIR/emir-agent-macos-amd64" "$INSTALL_DIR/emir-agent"
+mv -f "$INSTALL_DIR/emir-agent-popup-macos-amd64" "$INSTALL_DIR/emir-agent-popup"
 chmod +x "$INSTALL_DIR/emir-agent"
+chmod +x "$INSTALL_DIR/emir-agent-popup"
 
 # Copy boot update helper and record install metadata for recovery.
 mkdir -p /usr/local/etc/emir-agent
@@ -42,7 +44,8 @@ chmod +x "$INSTALL_DIR/update-at-boot-macos.sh"
 cat > /usr/local/etc/emir-agent/install.conf <<EOF
 REPO=$REPO
 VERSION=$VERSION
-ASSET=emir-agent-macos-amd64
+AGENT_ASSET=emir-agent-macos-amd64
+POPUP_ASSET=emir-agent-popup-macos-amd64
 EOF
 
 if [ -n "$CORE_URL" ]; then

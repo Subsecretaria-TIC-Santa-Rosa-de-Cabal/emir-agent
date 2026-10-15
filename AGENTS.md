@@ -123,10 +123,14 @@ Loads state and credentials, queries `/api/agent/version`, and applies a mandato
 The agent polls `/api/agent/announcements` on every cycle. When the backend returns active announcements for the current computer, the agent spawns a detached child process running:
 
 ```
-emir-agent --show-announcement <base64-json>
+emir-agent-popup <base64-json>
 ```
 
-The child process downloads the image and opens a **fullscreen, borderless popup** using `ebiten`. The image is scaled with "contain" logic so it is never cropped or stretched. The popup shows the title, description and an optional link, plus a close button in the top-right corner. The impression is reported to `/api/agent/announcements/{id}/impression` as soon as the popup appears, so each announcement is shown only once per computer.
+`emir-agent-popup` is a separate executable built from `cmd/popup`. Keeping the popup in its own binary means the main `emir-agent` service never imports GUI libraries (`ebiten`), so it can run headless on Linux servers and still report `--version` or run `--update-check` without a `DISPLAY`.
+
+The popup process downloads the image and opens a **fullscreen, borderless window** using `ebiten`. The image is scaled with "contain" logic so it is never cropped or stretched. The popup shows the title, description and an optional link, plus a close button in the top-right corner. The impression is reported to `/api/agent/announcements/{id}/impression` as soon as the popup appears, so each announcement is shown only once per computer.
+
+Because `ebiten` requires CGO on Linux and macOS, the release workflow builds `emir-agent-popup` with `CGO_ENABLED=1` on those platforms while the main `emir-agent` binary stays `CGO_ENABLED=0`.
 
 ## Testing Auto-Update Locally
 

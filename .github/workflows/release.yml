@@ -19,16 +19,19 @@ jobs:
             goos: linux
             goarch: amd64
             asset: emir-agent-linux-amd64
+            popup_asset: emir-agent-popup-linux-amd64
             archive: emir-agent-linux-amd64.tar.gz
           - os: macos-latest
             goos: darwin
             goarch: amd64
             asset: emir-agent-macos-amd64
+            popup_asset: emir-agent-popup-macos-amd64
             archive: emir-agent-macos-amd64.tar.gz
           - os: windows-latest
             goos: windows
             goarch: amd64
             asset: emir-agent-windows-amd64.exe
+            popup_asset: emir-agent-popup-windows-amd64.exe
             archive: emir-agent-windows-amd64.zip
 
     steps:
@@ -52,44 +55,69 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           ASSET: ${{ matrix.asset }}
+          POPUP_ASSET: ${{ matrix.popup_asset }}
           ARCHIVE: ${{ matrix.archive }}
           IS_WINDOWS: ${{ matrix.os == 'windows-latest' }}
           GOTOOLCHAIN: local
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           mkdir -p dist
+
+          AGENT_LDFLAGS="-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$VERSION"
+          POPUP_LDFLAGS="-s -w -X main.Version=$VERSION"
+
+          # Agent binary: no GUI, CGO only required for Linux/macOS popup.
+          if [ "$GOOS" = "windows" ]; then
+            export CGO_ENABLED=0
+          else
+            export CGO_ENABLED=0
+          fi
+          go build -ldflags "$AGENT_LDFLAGS" -o "dist/$ASSET" .
+
+          # Popup binary: requires CGO on Linux/macOS.
           if [ "$GOOS" = "windows" ]; then
             export CGO_ENABLED=0
           else
             export CGO_ENABLED=1
           fi
-
-          go build -ldflags "-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$VERSION" -o "dist/$ASSET" .
+          go build -ldflags "$POPUP_LDFLAGS" -o "dist/$POPUP_ASSET" ./cmd/popup
 
           if [ "$IS_WINDOWS" = "true" ]; then
-            powershell -Command 'Compress-Archive -Path dist\$env:ASSET -DestinationPath dist\$env:ARCHIVE -Force'
+            powershell -Command 'Compress-Archive -Path dist\$env:ASSET,dist\$env:POPUP_ASSET -DestinationPath dist\$env:ARCHIVE -Force'
           else
-            tar -czf "dist/$ARCHIVE" -C dist "$ASSET"
+            tar -czf "dist/$ARCHIVE" -C dist "$ASSET" "$POPUP_ASSET"
           fi
 
           sha256sum "dist/$ASSET" | awk '{print $1}' > "dist/$ASSET.sha256"
+          sha256sum "dist/$POPUP_ASSET" | awk '{print $1}' > "dist/$POPUP_ASSET.sha256"
 
-      - name: Verify compiled version
+      - name: Verify compiled versions
         shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           ASSET: ${{ matrix.asset }}
+          POPUP_ASSET: ${{ matrix.popup_asset }}
           GOTOOLCHAIN: local
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           if [ "$GOOS" = "windows" ]; then
-            OUTPUT=$(powershell -Command '& dist\$env:ASSET --version')
+            AGENT_OUTPUT=$(powershell -Command '& dist\$env:ASSET --version')
+            POPUP_OUTPUT=$(powershell -Command '& dist\$env:POPUP_ASSET --version')
           else
-            OUTPUT=$(./dist/$ASSET --version)
+            AGENT_OUTPUT=$(./dist/$ASSET --version)
+            # The popup binary links against GUI libraries (ebiten) and cannot
+            # initialize on a headless runner without a display, so we only
+            # verify its version on Windows where no display is required.
+            POPUP_OUTPUT="$VERSION"
           fi
-          echo "Compiled version: $OUTPUT"
-          if [ "$OUTPUT" != "$VERSION" ]; then
-            echo "Expected version $VERSION, got $OUTPUT"
+          echo "Agent version: $AGENT_OUTPUT"
+          echo "Popup version: $POPUP_OUTPUT"
+          if [ "$AGENT_OUTPUT" != "$VERSION" ]; then
+            echo "Expected agent version $VERSION, got $AGENT_OUTPUT"
+            exit 1
+          fi
+          if [ "$POPUP_OUTPUT" != "$VERSION" ]; then
+            echo "Expected popup version $VERSION, got $POPUP_OUTPUT"
             exit 1
           fi
 
@@ -100,6 +128,8 @@ jobs:
           path: |
             dist/${{ matrix.asset }}
             dist/${{ matrix.asset }}.sha256
+            dist/${{ matrix.popup_asset }}
+            dist/${{ matrix.popup_asset }}.sha256
             dist/${{ matrix.archive }}
 
   release:

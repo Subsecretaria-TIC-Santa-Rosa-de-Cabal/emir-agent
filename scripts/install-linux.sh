@@ -34,7 +34,9 @@ echo "Extracting to $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 tar -xzf "$TMP_DIR/$ASSET_NAME" -C "$INSTALL_DIR"
 mv -f "$INSTALL_DIR/emir-agent-linux-amd64" "$INSTALL_DIR/emir-agent"
+mv -f "$INSTALL_DIR/emir-agent-popup-linux-amd64" "$INSTALL_DIR/emir-agent-popup"
 chmod +x "$INSTALL_DIR/emir-agent"
+chmod +x "$INSTALL_DIR/emir-agent-popup"
 
 # Copy boot update helper and record install metadata for recovery.
 cp "$SCRIPT_DIR/update-at-boot.sh" "$INSTALL_DIR/update-at-boot.sh"
@@ -42,7 +44,8 @@ chmod +x "$INSTALL_DIR/update-at-boot.sh"
 cat > "$INSTALL_DIR/install.conf" <<EOF
 REPO=$REPO
 VERSION=$VERSION
-ASSET=emir-agent-linux-amd64
+AGENT_ASSET=emir-agent-linux-amd64
+POPUP_ASSET=emir-agent-popup-linux-amd64
 EOF
 
 if [ -n "$CORE_URL" ]; then

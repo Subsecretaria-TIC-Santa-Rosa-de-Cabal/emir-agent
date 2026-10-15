@@ -39,10 +39,11 @@ if (-not $TagVersion.StartsWith('v')) {
     $TagVersion = "v$TagVersion"
 }
 
-$AssetName = "emir-agent-windows-amd64.exe"
-$DownloadURL = "https://github.com/$Repo/releases/download/$TagVersion/$AssetName"
+$AgentAssetName = "emir-agent-windows-amd64.exe"
+$PopupAssetName = "emir-agent-popup-windows-amd64.exe"
 $ServiceName = "emir-agent"
-$ServiceBinary = Join-Path $InstallDir "emir-agent.exe"
+$AgentBinary = Join-Path $InstallDir "emir-agent.exe"
+$PopupBinary = Join-Path $InstallDir "emir-agent-popup.exe"
 $StateDir = Join-Path $env:PROGRAMDATA "emir-agent"
 $StatePath = Join-Path $StateDir "state.json"
 
@@ -60,9 +61,6 @@ Unregister-ScheduledTask -TaskName $UpdateTaskName -Confirm:$false -ErrorAction 
 
 $TempDir = Join-Path $env:TEMP "emir-agent-install-$Version"
 New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
-
-Write-Host "Downloading $AssetName from GitHub ($DownloadURL)..."
-$BinaryPath = Join-Path $TempDir $AssetName
 
 function Download-File {
     param(
@@ -88,7 +86,15 @@ function Download-File {
 }
 
 try {
-    Download-File -Url $DownloadURL -OutFile $BinaryPath
+    $AgentUrl = "https://github.com/$Repo/releases/download/$TagVersion/$AgentAssetName"
+    Write-Host "Downloading $AgentAssetName from GitHub ($AgentUrl)..."
+    $AgentDownloadPath = Join-Path $TempDir $AgentAssetName
+    Download-File -Url $AgentUrl -OutFile $AgentDownloadPath
+
+    $PopupUrl = "https://github.com/$Repo/releases/download/$TagVersion/$PopupAssetName"
+    Write-Host "Downloading $PopupAssetName from GitHub ($PopupUrl)..."
+    $PopupDownloadPath = Join-Path $TempDir $PopupAssetName
+    Download-File -Url $PopupUrl -OutFile $PopupDownloadPath
 } catch {
     Write-Warning "Invoke-WebRequest failed, trying curl.exe..."
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
@@ -96,21 +102,37 @@ try {
         Write-Error "Neither Invoke-WebRequest nor curl.exe is available to download the agent."
         exit 1
     }
-    & curl.exe -fsSL -A 'emir-agent-installer' -o $BinaryPath $DownloadURL
+
+    $AgentUrl = "https://github.com/$Repo/releases/download/$TagVersion/$AgentAssetName"
+    $AgentDownloadPath = Join-Path $TempDir $AgentAssetName
+    & curl.exe -fsSL -A 'emir-agent-installer' -o $AgentDownloadPath $AgentUrl
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "curl.exe failed to download the agent."
+        Write-Error "curl.exe failed to download the agent binary."
+        exit 1
+    }
+
+    $PopupUrl = "https://github.com/$Repo/releases/download/$TagVersion/$PopupAssetName"
+    $PopupDownloadPath = Join-Path $TempDir $PopupAssetName
+    & curl.exe -fsSL -A 'emir-agent-installer' -o $PopupDownloadPath $PopupUrl
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "curl.exe failed to download the popup binary."
         exit 1
     }
 }
 
-if (-not (Test-Path $BinaryPath)) {
-    Write-Error "Downloaded binary was not found at $BinaryPath"
+if (-not (Test-Path $AgentDownloadPath)) {
+    Write-Error "Downloaded agent binary was not found at $AgentDownloadPath"
+    exit 1
+}
+if (-not (Test-Path $PopupDownloadPath)) {
+    Write-Error "Downloaded popup binary was not found at $PopupDownloadPath"
     exit 1
 }
 
 Write-Host "Extracting to $InstallDir..."
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-Move-Item -Path $BinaryPath -Destination $ServiceBinary -Force -ErrorAction SilentlyContinue
+Move-Item -Path $AgentDownloadPath -Destination $AgentBinary -Force -ErrorAction SilentlyContinue
+Move-Item -Path $PopupDownloadPath -Destination $PopupBinary -Force -ErrorAction SilentlyContinue
 
 # Copy the boot update helper and record install metadata for recovery.
 $BootScript = Join-Path $PSScriptRoot "update-at-boot.ps1"
@@ -121,7 +143,8 @@ if (Test-Path $BootScript) {
 @(
     "REPO=$Repo"
     "VERSION=$Version"
-    "ASSET=$AssetName"
+    "AGENT_ASSET=$AgentAssetName"
+    "POPUP_ASSET=$PopupAssetName"
 ) | Set-Content -Path (Join-Path $InstallDir "install.conf") -Encoding ASCII
 
 # Persist core URL as an environment variable for the service.
@@ -138,7 +161,7 @@ New-Item -ItemType Directory -Path $StateDir -Force | Out-Null
 
 # Pair interactively before running as a service.
 Write-Host "`nPairing the agent with emir-core..."
-& $ServiceBinary --pair
+& $AgentBinary --pair
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Pairing failed. The service will not be started."
@@ -146,7 +169,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Registering Windows service $ServiceName..."
-sc.exe create $ServiceName binPath= "$ServiceBinary" start= auto DisplayName= "EMIR Agent" | Out-Null
+sc.exe create $ServiceName binPath= "$AgentBinary" start= auto DisplayName= "EMIR Agent" | Out-Null
 sc.exe failure $ServiceName reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
 
 Start-Service -Name $ServiceName

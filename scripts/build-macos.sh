@@ -12,22 +12,34 @@ mkdir -p "$OUTPUT_DIR"
 
 export GOOS=darwin
 export GOARCH=amd64
-export CGO_ENABLED=0
 export GOTOOLCHAIN=local
 
-BINARY_NAME="emir-agent-macos-amd64"
-BINARY_PATH="$OUTPUT_DIR/$BINARY_NAME"
+AGENT_BINARY_NAME="emir-agent-macos-amd64"
+AGENT_BINARY_PATH="$OUTPUT_DIR/$AGENT_BINARY_NAME"
+POPUP_BINARY_NAME="emir-agent-popup-macos-amd64"
+POPUP_BINARY_PATH="$OUTPUT_DIR/$POPUP_BINARY_NAME"
 
-echo "Building $BINARY_NAME (version $VERSION)..."
-go build -ldflags "-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$VERSION" -o "$BINARY_PATH" "$PROJECT_ROOT"
+AGENT_LDFLAGS="-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$VERSION"
+POPUP_LDFLAGS="-s -w -X main.Version=$VERSION"
+
+echo "Building $AGENT_BINARY_NAME (version $VERSION)..."
+export CGO_ENABLED=0
+go build -ldflags "$AGENT_LDFLAGS" -o "$AGENT_BINARY_PATH" "$PROJECT_ROOT"
+
+echo "Building $POPUP_BINARY_NAME (version $VERSION)..."
+CGO_ENABLED=1 go build -ldflags "$POPUP_LDFLAGS" -o "$POPUP_BINARY_PATH" "$PROJECT_ROOT/cmd/popup"
 
 cp "$SCRIPT_DIR/update-at-boot-macos.sh" "$OUTPUT_DIR/update-at-boot-macos.sh"
 
-TAR_PATH="$OUTPUT_DIR/$BINARY_NAME.tar.gz"
-tar -czf "$TAR_PATH" -C "$OUTPUT_DIR" "$BINARY_NAME" "update-at-boot-macos.sh"
+TAR_PATH="$OUTPUT_DIR/$AGENT_BINARY_NAME.tar.gz"
+tar -czf "$TAR_PATH" -C "$OUTPUT_DIR" "$AGENT_BINARY_NAME" "$POPUP_BINARY_NAME" "update-at-boot-macos.sh"
 
-echo "Built: $BINARY_PATH"
+echo "Built: $AGENT_BINARY_PATH"
+echo "Built: $POPUP_BINARY_PATH"
 echo "Packaged: $TAR_PATH"
 
-shasum -a 256 "$BINARY_PATH" | awk '{print $1}' > "$BINARY_PATH.sha256"
-echo "Checksum: $(cat "$BINARY_PATH.sha256")"
+shasum -a 256 "$AGENT_BINARY_PATH" | awk '{print $1}' > "$AGENT_BINARY_PATH.sha256"
+echo "Agent checksum: $(cat "$AGENT_BINARY_PATH.sha256")"
+
+shasum -a 256 "$POPUP_BINARY_PATH" | awk '{print $1}' > "$POPUP_BINARY_PATH.sha256"
+echo "Popup checksum: $(cat "$POPUP_BINARY_PATH.sha256")"
