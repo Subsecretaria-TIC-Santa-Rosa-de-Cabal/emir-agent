@@ -79,8 +79,10 @@ func main() {
 	authBundle := auth.NewTokenAuth(token, keyPair)
 	apiClient := api.NewClient(cfg.CoreURL, authBundle)
 
+	fmt.Printf("popup starting for announcement %s\n", ann.Identifier)
 	if err := popup.Show(context.Background(), apiClient, ann); err != nil {
 		fmt.Fprintf(os.Stderr, "show announcement: %v\n", err)
 		os.Exit(1)
 	}
+	fmt.Println("popup closed")
 }

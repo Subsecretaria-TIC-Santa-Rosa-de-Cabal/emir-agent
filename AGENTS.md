@@ -130,6 +130,12 @@ emir-agent-popup <base64-json>
 
 The popup process downloads the image and opens a **fullscreen, borderless window** using `ebiten`. The image is scaled with "contain" logic so it is never cropped or stretched. The popup shows the title, description and an optional link, plus a close button in the top-right corner. The impression is reported to `/api/agent/announcements/{id}/impression` as soon as the popup appears, so each announcement is shown only once per computer.
 
+### Windows service popups
+
+When the agent runs as a Windows service it executes as `SYSTEM` in session 0, which cannot display windows on the user's desktop. To work around this, the Windows build of `SpawnAnnouncementViewer` obtains the active console session ID, queries the user token via `WTSQueryUserToken`, and starts `emir-agent-popup` with `CreateProcessAsUser` in the logged-on user's session. If this fails (for example, when running interactively or when no user is logged on), it falls back to a detached child process.
+
+The installer grants `Authenticated Users` read access to the machine-wide state directory (`C:\ProgramData\emir-agent`) and `credentials.json` so the popup process can authenticate even when it runs as the interactive user rather than `SYSTEM`.
+
 Because `ebiten` requires CGO on Linux and macOS, the release workflow builds `emir-agent-popup` with `CGO_ENABLED=1` on those platforms while the main `emir-agent` binary stays `CGO_ENABLED=0`.
 
 ## Testing Auto-Update Locally

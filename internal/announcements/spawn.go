@@ -5,12 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
-	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/updater"
 )
 
 // popupBinaryName returns the popup executable name for the current platform.
@@ -21,9 +19,10 @@ func popupBinaryName() string {
 	return "emir-agent-popup"
 }
 
-// SpawnAnnouncementViewer launches the emir-agent-popup binary as a detached
-// process to display the given announcement. The popup binary must live in the
-// same directory as the running agent executable.
+// SpawnAnnouncementViewer launches the emir-agent-popup binary to display the
+// given announcement. On Windows the popup is started in the active user's
+// session so it is visible when the agent is running as a service. On Unix it
+// runs as a detached child process.
 func SpawnAnnouncementViewer(ann models.AgentAnnouncement) error {
 	payload, err := json.Marshal(ann)
 	if err != nil {
@@ -39,6 +38,18 @@ func SpawnAnnouncementViewer(ann models.AgentAnnouncement) error {
 
 	popupPath := filepath.Join(filepath.Dir(agentPath), popupBinaryName())
 
-	cmd := exec.Command(popupPath, encoded)
-	return updater.StartDetached(cmd)
+	if _, err := os.Stat(popupPath); err != nil {
+		return fmt.Errorf("popup binary not found at %s: %w", popupPath, err)
+	}
+
+	logPath := filepath.Join(os.TempDir(), "emir-agent-popup.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open popup log: %w", err)
+	}
+	defer logFile.Close()
+
+	fmt.Printf("spawning popup viewer: %s (log: %s)\n", popupPath, logPath)
+
+	return startPopup(popupPath, encoded, logFile)
 }

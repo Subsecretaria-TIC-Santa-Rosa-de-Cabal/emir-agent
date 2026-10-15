@@ -130,15 +130,15 @@ func (a *Agent) showAnnouncements(ctx context.Context) error {
 		return fmt.Errorf("api client not initialized")
 	}
 
+	fmt.Println("checking for popup announcements")
 	anncs, err := a.apiClient.GetAnnouncements(ctx)
 	if err != nil {
 		return fmt.Errorf("get announcements: %w", err)
 	}
+	fmt.Printf("received %d announcement(s) to display\n", len(anncs))
 	if len(anncs) == 0 {
 		return nil
 	}
-
-	fmt.Printf("received %d announcement(s) to display\n", len(anncs))
 	for _, ann := range anncs {
 		if err := a.spawnAnnouncementViewer(ann); err != nil {
 			fmt.Fprintf(os.Stderr, "spawn announcement viewer: %v\n", err)

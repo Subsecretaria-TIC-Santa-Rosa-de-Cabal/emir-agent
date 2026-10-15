@@ -159,6 +159,20 @@ if ($CoreURL -ne "") {
 $env:EMIR_STATE_PATH = $StatePath
 New-Item -ItemType Directory -Path $StateDir -Force | Out-Null
 
+function Grant-ReadAccessToAuthenticatedUsers {
+    param([string]$Path)
+    $acl = Get-Acl -Path $Path
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+        "Authenticated Users",
+        "ReadAndExecute",
+        "ContainerInherit,ObjectInherit",
+        "None",
+        "Allow"
+    )
+    $acl.AddAccessRule($rule)
+    Set-Acl -Path $Path -AclObject $acl
+}
+
 # Pair interactively before running as a service.
 Write-Host "`nPairing the agent with emir-core..."
 & $AgentBinary --pair
@@ -166,6 +180,15 @@ Write-Host "`nPairing the agent with emir-core..."
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Pairing failed. The service will not be started."
     exit 1
+}
+
+# Allow the logged-on user (and any future interactive user) to read the state
+# and credentials so the popup process can authenticate when launched from the
+# service into the user's session.
+Grant-ReadAccessToAuthenticatedUsers -Path $StateDir
+$credentialsPath = Join-Path $StateDir "credentials.json"
+if (Test-Path $credentialsPath) {
+    Grant-ReadAccessToAuthenticatedUsers -Path $credentialsPath
 }
 
 Write-Host "Registering Windows service $ServiceName..."
