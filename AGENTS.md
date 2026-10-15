@@ -84,6 +84,7 @@ The token and private key seed are stored in `<state-dir>/credentials.json` alon
 1. Bump `Version` in `internal/models/models.go`.
 2. Commit and push a tag: `git tag v0.2.0 && git push origin v0.2.0`.
 3. GitHub Actions builds per-platform binaries, verifies each binary reports the correct version via `--version`, creates a Release, and attaches install scripts.
+   - The popup module uses `ebiten`, which requires **CGO** on Linux and macOS. The release workflow installs the required X11/GL development packages on the Ubuntu runner and enables `CGO_ENABLED=1` for Linux/macOS; Windows keeps `CGO_ENABLED=0`.
 4. Register the release in `emir-core` (`agent_releases` table) including Windows, Linux and macOS assets.
 5. Agents detect the new version on the next 10-minute poll and auto-update if `is_mandatory` is true.
 
