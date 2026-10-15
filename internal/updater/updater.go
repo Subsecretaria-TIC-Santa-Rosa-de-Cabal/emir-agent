@@ -168,7 +168,7 @@ try {
 	}
 
 	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptPath)
-	return startDetached(cmd)
+	return StartDetached(cmd)
 }
 
 func spawnLinuxUpdater(currentPath, newBinaryPath string) error {
@@ -211,7 +211,7 @@ rm -rf "%s"
 	}
 
 	cmd := exec.Command("sh", scriptPath)
-	return startDetached(cmd)
+	return StartDetached(cmd)
 }
 
 func spawnDarwinUpdater(currentPath, newBinaryPath string) error {
@@ -248,5 +248,5 @@ rm -rf "%s"
 	}
 
 	cmd := exec.Command("sh", scriptPath)
-	return startDetached(cmd)
+	return StartDetached(cmd)
 }

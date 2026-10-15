@@ -4,7 +4,7 @@ Agent-focused guide for working on the `emir-agent` Go desktop service.
 
 ## Project
 
-- **Language:** Go 1.22+
+- **Language:** Go 1.25+
 - **Module:** `github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent`
 - **Repo:** https://github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent
 - **Communication:** Outbound polling only. The agent calls `emir-core`; the backend never calls the agent.
@@ -94,6 +94,38 @@ The agent integrates natively with the Windows Service Control Manager (`interna
 ## System tray icon
 
 When the agent runs interactively on Windows it displays an icon in the system tray (notification area) using the EMIR favicon (`internal/tray/favicon.ico`). The tray menu provides an option to close/exit the agent. Services cannot display tray icons because they run in session 0, so the icon is only available in interactive mode.
+
+## Boot-time update check
+
+The installer registers a platform-specific boot-time job that runs shortly after the machine starts. This guarantees that mandatory updates are applied even if the agent was offline for a long time or if its binary is missing.
+
+- **Windows:** Scheduled task `EMIR Agent Update At Startup` (runs as `SYSTEM`, 90s delay).
+- **Linux:** systemd timer `emir-agent-update-boot.timer` (`OnBootSec=90s`).
+- **macOS:** LaunchDaemon `com.emir.agent.update` (`RunAtLoad`, delay handled by the script).
+
+Each job executes the corresponding `scripts/update-at-boot.*` helper, which:
+
+1. Verifies that another update is not already running (lock file).
+2. Runs `emir-agent --update-check` if the binary exists.
+3. Enters **recovery mode** if the binary is missing: re-downloads the version recorded in `install.conf` and validates its SHA-256 checksum when possible.
+
+### `--update-check` CLI mode
+
+```bash
+emir-agent --update-check
+```
+
+Loads state and credentials, queries `/api/agent/version`, and applies a mandatory update if one is available. This mode is used by the boot-time helpers and can be run manually.
+
+## Popup announcements
+
+The agent polls `/api/agent/announcements` on every cycle. When the backend returns active announcements for the current computer, the agent spawns a detached child process running:
+
+```
+emir-agent --show-announcement <base64-json>
+```
+
+The child process downloads the image and opens a **fullscreen, borderless popup** using `ebiten`. The image is scaled with "contain" logic so it is never cropped or stretched. The popup shows the title, description and an optional link, plus a close button in the top-right corner. The impression is reported to `/api/agent/announcements/{id}/impression` as soon as the popup appears, so each announcement is shown only once per computer.
 
 ## Testing Auto-Update Locally
 

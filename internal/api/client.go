@@ -150,3 +150,36 @@ func (c *Client) Version(ctx context.Context) (*models.AgentVersionResponse, err
 	}
 	return &resp, nil
 }
+
+// GetAnnouncements fetches active popup announcements for this computer.
+func (c *Client) GetAnnouncements(ctx context.Context) ([]models.AgentAnnouncement, error) {
+	httpReq, err := c.request(http.MethodGet, "/api/agent/announcements", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp []models.AgentAnnouncement
+	if _, err := c.do(ctx, httpReq, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ReportAnnouncementImpression tells the backend that an announcement was shown.
+func (c *Client) ReportAnnouncementImpression(ctx context.Context, announcementID string) error {
+	payload, err := json.Marshal(models.AgentAnnouncementImpressionRequest{
+		AgentVersion: models.Version,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal impression request: %w", err)
+	}
+
+	path := "/api/agent/announcements/" + announcementID + "/impression"
+	httpReq, err := c.request(http.MethodPost, path, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+
+	_, err = c.do(ctx, httpReq, nil)
+	return err
+}

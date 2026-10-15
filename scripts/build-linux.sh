@@ -4,7 +4,8 @@ set -euo pipefail
 VERSION="${1:-0.1.0}"
 OUTPUT_DIR="${2:-dist}"
 
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="$PROJECT_ROOT/$OUTPUT_DIR"
 
 mkdir -p "$OUTPUT_DIR"
@@ -20,8 +21,10 @@ BINARY_PATH="$OUTPUT_DIR/$BINARY_NAME"
 echo "Building $BINARY_NAME (version $VERSION)..."
 go build -ldflags "-s -w -X github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models.Version=$VERSION" -o "$BINARY_PATH" "$PROJECT_ROOT"
 
+cp "$SCRIPT_DIR/update-at-boot.sh" "$OUTPUT_DIR/update-at-boot.sh"
+
 TAR_PATH="$OUTPUT_DIR/$BINARY_NAME.tar.gz"
-tar -czf "$TAR_PATH" -C "$OUTPUT_DIR" "$BINARY_NAME"
+tar -czf "$TAR_PATH" -C "$OUTPUT_DIR" "$BINARY_NAME" "update-at-boot.sh"
 
 echo "Built: $BINARY_PATH"
 echo "Packaged: $TAR_PATH"

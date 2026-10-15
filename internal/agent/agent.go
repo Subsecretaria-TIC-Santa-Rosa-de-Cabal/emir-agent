@@ -2,11 +2,15 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
 	"time"
 
+	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/announcements"
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/api"
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/auth"
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/collectors"
@@ -49,30 +53,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	fmt.Printf("emir-agent %s starting...\n", models.Version)
 	fmt.Printf("state path: %s\n", a.config.StatePath)
 
-	state, err := a.stateRepo.Load()
-	if err != nil {
-		return fmt.Errorf("load state: %w", err)
+	if err := a.initialize(ctx, true); err != nil {
+		return err
 	}
-
-	if state == nil || state.AgentToken == "" {
-		if err := a.pair(ctx); err != nil {
-			return fmt.Errorf("pair: %w", err)
-		}
-	} else {
-		// Defensive: if the state remembers a version newer than the binary's
-		// compiled default, use it. This prevents update loops when a release
-		// build is missing the -ldflags version override.
-		if state.Version != "" && models.CompareVersions(state.Version, models.Version) > 0 {
-			fmt.Printf("using version from state: %s (binary default: %s)\n", state.Version, models.Version)
-			models.Version = state.Version
-		}
-
-		if err := a.loadAuth(state); err != nil {
-			return fmt.Errorf("load auth: %w", err)
-		}
-	}
-
-	a.apiClient = api.NewClient(a.config.CoreURL, a.authBundle)
 
 	// Run first cycle immediately.
 	if err := a.cycle(ctx); err != nil {
@@ -92,6 +75,154 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+// initialize loads state, sets up authentication and the API client.
+// If allowPair is true and the agent is not paired, the interactive pairing
+// flow is started. This method is shared between Run and RunUpdateCheck.
+func (a *Agent) initialize(ctx context.Context, allowPair bool) error {
+	state, err := a.stateRepo.Load()
+	if err != nil {
+		return fmt.Errorf("load state: %w", err)
+	}
+
+	if state == nil || state.AgentToken == "" {
+		if !allowPair {
+			return fmt.Errorf("agent not paired")
+		}
+		if err := a.pair(ctx); err != nil {
+			return fmt.Errorf("pair: %w", err)
+		}
+		state, err = a.stateRepo.Load()
+		if err != nil {
+			return fmt.Errorf("load state after pair: %w", err)
+		}
+		if state == nil {
+			return fmt.Errorf("state missing after pair")
+		}
+	}
+
+	// Defensive: if the state remembers a version newer than the binary's
+	// compiled default, use it. This prevents update loops when a release
+	// build is missing the -ldflags version override.
+	if state.Version != "" && models.CompareVersions(state.Version, models.Version) > 0 {
+		fmt.Printf("using version from state: %s (binary default: %s)\n", state.Version, models.Version)
+		models.Version = state.Version
+	}
+
+	if err := a.loadAuth(state); err != nil {
+		return fmt.Errorf("load auth: %w", err)
+	}
+
+	a.apiClient = api.NewClient(a.config.CoreURL, a.authBundle)
+	return nil
+}
+
+// RunUpdateCheck loads state and credentials, initializes the API client and
+// applies a mandatory update if one is available. It is designed to be invoked
+// by startup scripts via the --update-check CLI flag.
+func (a *Agent) RunUpdateCheck(ctx context.Context) (bool, error) {
+	if err := a.initialize(ctx, false); err != nil {
+		return false, err
+	}
+	return a.CheckAndUpdate(ctx)
+}
+
+// ShowAnnouncement initializes the agent (if needed) and displays a popup for
+// the given announcement. It is used by the --show-announcement CLI flag.
+func (a *Agent) ShowAnnouncement(ctx context.Context, ann models.AgentAnnouncement) error {
+	if a.apiClient == nil {
+		if err := a.initialize(ctx, false); err != nil {
+			return err
+		}
+	}
+	return announcements.Show(ctx, a.apiClient, ann)
+}
+
+func (a *Agent) showAnnouncements(ctx context.Context) error {
+	if a.apiClient == nil {
+		return fmt.Errorf("api client not initialized")
+	}
+
+	anncs, err := a.apiClient.GetAnnouncements(ctx)
+	if err != nil {
+		return fmt.Errorf("get announcements: %w", err)
+	}
+	if len(anncs) == 0 {
+		return nil
+	}
+
+	fmt.Printf("received %d announcement(s) to display\n", len(anncs))
+	for _, ann := range anncs {
+		if err := a.spawnAnnouncementViewer(ann); err != nil {
+			fmt.Fprintf(os.Stderr, "spawn announcement viewer: %v\n", err)
+		}
+	}
+	return nil
+}
+
+func (a *Agent) spawnAnnouncementViewer(ann models.AgentAnnouncement) error {
+	payload, err := json.Marshal(ann)
+	if err != nil {
+		return fmt.Errorf("marshal announcement: %w", err)
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(payload)
+	currentPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("get executable: %w", err)
+	}
+
+	cmd := exec.Command(currentPath, "--show-announcement", encoded)
+	return updater.StartDetached(cmd)
+}
+
+// CheckAndUpdate consults emir-core for a newer agent version and applies a
+// mandatory update if one is available. It returns true when an update was
+// initiated. The caller must have initialized the agent (state + auth + API client).
+func (a *Agent) CheckAndUpdate(ctx context.Context) (bool, error) {
+	if a.apiClient == nil {
+		return false, fmt.Errorf("api client not initialized")
+	}
+
+	versionResp, err := a.apiClient.Version(ctx)
+	if err != nil {
+		return false, fmt.Errorf("version check: %w", err)
+	}
+
+	downloadURL, checksum, hasAsset := versionResp.AssetForPlatform(runtime.GOOS)
+	if versionResp.Version == models.Version {
+		fmt.Printf("agent is up to date (%s)\n", models.Version)
+		return false, nil
+	}
+
+	fmt.Printf("new agent version available: %s (current: %s)\n", versionResp.Version, models.Version)
+	if !hasAsset {
+		fmt.Printf("no asset available for platform %s, skipping auto-update\n", runtime.GOOS)
+		return false, nil
+	}
+
+	if !versionResp.IsMandatory {
+		fmt.Printf("optional update available (checksum: %s), skipping\n", checksum)
+		return false, nil
+	}
+
+	fmt.Printf("applying mandatory update from %s...\n", downloadURL)
+	// Remember the target version before attempting the update. If the
+	// new binary is built without the correct -ldflags version override,
+	// this prevents an infinite update loop on restart.
+	if state, err := a.stateRepo.Load(); err == nil && state != nil {
+		state.Version = versionResp.Version
+		if saveErr := a.stateRepo.Save(state); saveErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to save target version: %v\n", saveErr)
+		}
+	}
+
+	if err := updater.Apply(*versionResp); err != nil {
+		return false, fmt.Errorf("apply update: %w", err)
+	}
+
+	return true, nil
 }
 
 func (a *Agent) pair(ctx context.Context) error {
@@ -187,37 +318,19 @@ func (a *Agent) cycle(ctx context.Context) error {
 	}
 	fmt.Println("inventory synced")
 
-	// Version check.
-	versionResp, err := a.apiClient.Version(ctx)
+	// Version check / auto-update.
+	updated, err := a.CheckAndUpdate(ctx)
 	if err != nil {
-		return fmt.Errorf("version check: %w", err)
+		return fmt.Errorf("update check: %w", err)
+	}
+	if updated {
+		// The updater script will replace the binary and restart the service.
+		return nil
 	}
 
-	downloadURL, checksum, hasAsset := versionResp.AssetForPlatform(runtime.GOOS)
-	if versionResp.Version != models.Version {
-		fmt.Printf("new agent version available: %s (current: %s)\n", versionResp.Version, models.Version)
-		if !hasAsset {
-			fmt.Printf("no asset available for platform %s, skipping auto-update\n", runtime.GOOS)
-			return nil
-		}
-		if versionResp.IsMandatory {
-			fmt.Printf("applying mandatory update from %s...\n", downloadURL)
-			// Remember the target version before attempting the update. If the
-			// new binary is built without the correct -ldflags version override,
-			// this prevents an infinite update loop on restart.
-			if state, err := a.stateRepo.Load(); err == nil && state != nil {
-				state.Version = versionResp.Version
-				if saveErr := a.stateRepo.Save(state); saveErr != nil {
-					fmt.Fprintf(os.Stderr, "failed to save target version: %v\n", saveErr)
-				}
-			}
-			if err := updater.Apply(*versionResp); err != nil {
-				return fmt.Errorf("apply update: %w", err)
-			}
-			// The updater script will replace the binary and restart the service.
-			return nil
-		}
-		fmt.Printf("optional update available (checksum: %s)\n", checksum)
+	// Popup announcements.
+	if err := a.showAnnouncements(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "announcements failed: %v\n", err)
 	}
 
 	return nil

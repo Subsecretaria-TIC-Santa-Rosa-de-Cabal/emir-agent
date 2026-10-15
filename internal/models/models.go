@@ -178,3 +178,17 @@ type AgentState struct {
 	AgentToken         string `json:"agent_token"`
 	Version            string `json:"version"`
 }
+
+// AgentAnnouncement represents a popup announcement served by emir-core.
+type AgentAnnouncement struct {
+	Identifier       string  `json:"identifier"`
+	Title            string  `json:"title"`
+	Description      *string `json:"description,omitempty"`
+	LinkURL          *string `json:"link_url,omitempty"`
+	ImageDownloadURL string  `json:"image_download_url"`
+}
+
+// AgentAnnouncementImpressionRequest reports that an announcement was shown.
+type AgentAnnouncementImpressionRequest struct {
+	AgentVersion string `json:"agent_version,omitempty"`
+}

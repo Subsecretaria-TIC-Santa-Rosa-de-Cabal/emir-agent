@@ -34,11 +34,16 @@ if (-not $?) {
     throw "Build failed"
 }
 
+$BootScript = Join-Path $PSScriptRoot "update-at-boot.ps1"
+$BootScriptDest = Join-Path $OutputDir "update-at-boot.ps1"
+Copy-Item -Path $BootScript -Destination $BootScriptDest -Force
+
 $ZipPath = Join-Path $OutputDir "emir-agent-windows-amd64.zip"
-Compress-Archive -Path $BinaryPath -DestinationPath $ZipPath -Force
+Compress-Archive -Path $BinaryPath, $BootScriptDest -DestinationPath $ZipPath -Force
 
 Write-Host "Built: $BinaryPath"
 Write-Host "Packaged: $ZipPath"
+Write-Host "Included: $BootScriptDest"
 
 # Compute checksum
 $Hash = (Get-FileHash -Path $BinaryPath -Algorithm SHA256).Hash.ToLower()

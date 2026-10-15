@@ -9,9 +9,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// startDetached launches a process independent of the parent so it survives
+// StartDetached launches a process independent of the parent so it survives
 // service stop / parent exit on Windows.
-func startDetached(cmd *exec.Cmd) error {
+func StartDetached(cmd *exec.Cmd) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: windows.DETACHED_PROCESS | windows.CREATE_NEW_PROCESS_GROUP,
 	}

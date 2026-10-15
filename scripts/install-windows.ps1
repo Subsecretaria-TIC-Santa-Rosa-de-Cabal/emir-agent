@@ -18,7 +18,9 @@ param(
     [string]$CoreURL = "",
     [string]$Version = "0.1.0",
     [string]$Repo = "Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent",
-    [string]$InstallDir = "C:\Program Files\emir-agent"
+    [string]$InstallDir = "C:\Program Files\emir-agent",
+    [bool]$UpdateAtStartup = $true,
+    [int]$UpdateBootDelaySeconds = 90
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,6 +53,10 @@ if ($ExistingService) {
     sc.exe delete $ServiceName | Out-Null
     Start-Sleep -Seconds 2
 }
+
+# Remove any existing startup update task; it will be re-created below.
+$UpdateTaskName = "EMIR Agent Update At Startup"
+Unregister-ScheduledTask -TaskName $UpdateTaskName -Confirm:$false -ErrorAction SilentlyContinue
 
 $TempDir = Join-Path $env:TEMP "emir-agent-install-$Version"
 New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
@@ -106,6 +112,18 @@ Write-Host "Extracting to $InstallDir..."
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 Move-Item -Path $BinaryPath -Destination $ServiceBinary -Force -ErrorAction SilentlyContinue
 
+# Copy the boot update helper and record install metadata for recovery.
+$BootScript = Join-Path $PSScriptRoot "update-at-boot.ps1"
+if (Test-Path $BootScript) {
+    Copy-Item -Path $BootScript -Destination $InstallDir -Force
+}
+
+@(
+    "REPO=$Repo"
+    "VERSION=$Version"
+    "ASSET=$AssetName"
+) | Set-Content -Path (Join-Path $InstallDir "install.conf") -Encoding ASCII
+
 # Persist core URL as an environment variable for the service.
 if ($CoreURL -ne "") {
     [Environment]::SetEnvironmentVariable("EMIR_CORE_URL", $CoreURL, "Machine")
@@ -132,4 +150,18 @@ sc.exe create $ServiceName binPath= "$ServiceBinary" start= auto DisplayName= "E
 sc.exe failure $ServiceName reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
 
 Start-Service -Name $ServiceName
+
+# Register a startup task that checks for mandatory updates shortly after boot.
+if ($UpdateAtStartup) {
+    $UpdateTaskName = "EMIR Agent Update At Startup"
+    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$InstallDir\update-at-boot.ps1`""
+    $Trigger = New-ScheduledTaskTrigger -AtStartup
+    $Trigger.Delay = "PT$($UpdateBootDelaySeconds)S"
+    $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -Hidden
+
+    Register-ScheduledTask -TaskName $UpdateTaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force | Out-Null
+    Write-Host "Registered startup update task '$UpdateTaskName' (delay: ${UpdateBootDelaySeconds}s)."
+}
+
 Write-Host "emir-agent installed and running."
