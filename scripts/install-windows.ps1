@@ -160,12 +160,16 @@ $env:EMIR_STATE_PATH = $StatePath
 New-Item -ItemType Directory -Path $StateDir -Force | Out-Null
 
 function Grant-ReadAccessToAuthenticatedUsers {
-    param([string]$Path)
+    param(
+        [string]$Path,
+        [switch]$IsDirectory
+    )
     $acl = Get-Acl -Path $Path
+    $inheritanceFlags = if ($IsDirectory) { "ContainerInherit,ObjectInherit" } else { "None" }
     $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
         "Authenticated Users",
         "ReadAndExecute",
-        "ContainerInherit,ObjectInherit",
+        $inheritanceFlags,
         "None",
         "Allow"
     )
@@ -185,7 +189,7 @@ if ($LASTEXITCODE -ne 0) {
 # Allow the logged-on user (and any future interactive user) to read the state
 # and credentials so the popup process can authenticate when launched from the
 # service into the user's session.
-Grant-ReadAccessToAuthenticatedUsers -Path $StateDir
+Grant-ReadAccessToAuthenticatedUsers -Path $StateDir -IsDirectory
 $credentialsPath = Join-Path $StateDir "credentials.json"
 if (Test-Path $credentialsPath) {
     Grant-ReadAccessToAuthenticatedUsers -Path $credentialsPath
