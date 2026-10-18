@@ -15,8 +15,8 @@
     Directory where the agent binary will be installed.
 #>
 param(
-    [string]$CoreURL = "",
-    [string]$Version = "0.1.0",
+    [string]$CoreURL = "https://api.emir.gov.co",
+    [string]$Version = "",
     [string]$Repo = "Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent",
     [string]$InstallDir = "C:\Program Files\emir-agent",
     [bool]$UpdateAtStartup = $true,
@@ -31,6 +31,29 @@ $ErrorActionPreference = "Stop"
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Error "This script must be run as Administrator."
     exit 1
+}
+
+function Get-LatestReleaseVersion {
+    param([string]$Repository)
+    $apiUrl = "https://api.github.com/repos/$Repository/releases/latest"
+    try {
+        $response = Invoke-WebRequest -Uri $apiUrl -UseBasicParsing -Headers @{
+            'User-Agent' = 'emir-agent-installer'
+        } | ConvertFrom-Json
+        if (-not $response.tag_name) {
+            throw "GitHub API did not return a tag_name"
+        }
+        return $response.tag_name.TrimStart('v')
+    } catch {
+        Write-Error "Failed to determine latest release version from GitHub: $_"
+        exit 1
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    Write-Host "Version not specified. Looking up the latest release on GitHub..."
+    $Version = Get-LatestReleaseVersion -Repository $Repo
+    Write-Host "Latest release is v$Version"
 }
 
 # Normalize version so the URL always contains the 'v' prefix.

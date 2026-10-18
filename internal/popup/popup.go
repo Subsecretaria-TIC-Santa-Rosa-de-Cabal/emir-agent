@@ -210,9 +210,17 @@ func Show(ctx context.Context, apiClient *api.Client, ann models.AgentAnnounceme
 		return fmt.Errorf("load image: %w", err)
 	}
 
+	screenWidth, screenHeight := ebiten.ScreenSizeInFullscreen()
+	windowWidth := int(float64(screenWidth) * 0.8)
+	windowHeight := int(float64(screenHeight) * 0.8)
+	posX := (screenWidth - windowWidth) / 2
+	posY := (screenHeight - windowHeight) / 2
+
 	ebiten.SetWindowTitle("EMIR Anuncio")
 	ebiten.SetWindowDecorated(false)
-	ebiten.SetFullscreen(true)
+	ebiten.SetWindowFloating(true)
+	ebiten.SetWindowSize(windowWidth, windowHeight)
+	ebiten.SetWindowPosition(posX, posY)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
 	ebiten.SetVsyncEnabled(true)
 
