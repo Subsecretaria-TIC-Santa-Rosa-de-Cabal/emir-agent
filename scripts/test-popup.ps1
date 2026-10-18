@@ -31,6 +31,9 @@ go build -o "$DistDir\emir-agent-popup.exe" "$ProjectRoot\cmd\popup"
 Write-Host "Copying logo..."
 Copy-Item -Path "$ProjectRoot\assets\logo.png" -Destination "$AssetsDir\logo.png" -Force
 
+Write-Host "Copying notification sound..."
+Copy-Item -Path "$ProjectRoot\assets\notification.mp3" -Destination "$AssetsDir\notification.mp3" -Force
+
 # Build strings using [char] so the source file encoding does not matter.
 $InvertedExclamation = [char]0x00A1
 $Aacute              = [char]0x00E1

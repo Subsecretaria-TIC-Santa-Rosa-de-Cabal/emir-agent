@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
+	"github.com/hajimehoshi/ebiten/v2/audio/mp3"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"golang.org/x/image/font"
@@ -36,6 +38,7 @@ const (
 	panelPadding   = 24
 	panelRadius    = 16
 	linkIconSize   = 14
+	fadeInDuration = 0.5 // seconds
 )
 
 // announcementGame renders the announcement popup.
@@ -51,6 +54,7 @@ type announcementGame struct {
 	closeRect rect
 	linkRect  rect
 	linkURL   string
+	alpha     float64 // fade-in progress, 0..1
 
 	titleFace       font.Face
 	descriptionFace font.Face
@@ -68,6 +72,13 @@ func (r rect) contains(x, y int) bool {
 func (g *announcementGame) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		return ebiten.Termination
+	}
+
+	if g.alpha < 1.0 {
+		g.alpha += 1.0 / (float64(ebiten.TPS()) * fadeInDuration)
+		if g.alpha > 1.0 {
+			g.alpha = 1.0
+		}
 	}
 
 	x, y := ebiten.CursorPosition()
@@ -130,6 +141,7 @@ func (g *announcementGame) drawBackground(screen *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(dx, dy)
+	op.ColorScale.Scale(1, 1, 1, float32(g.alpha))
 	screen.DrawImage(g.img, op)
 }
 
@@ -152,6 +164,7 @@ func (g *announcementGame) drawLogo(screen *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(float64(logoMargin), float64(logoMargin))
+	op.ColorScale.Scale(1, 1, 1, float32(g.alpha))
 	screen.DrawImage(g.logo, op)
 
 	_ = h
@@ -186,6 +199,7 @@ func (g *announcementGame) drawCloseButton(screen *ebiten.Image) {
 
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(x), float64(y))
+	op.ColorScale.Scale(1, 1, 1, float32(g.alpha))
 	screen.DrawImage(btn, op)
 }
 
@@ -232,7 +246,7 @@ func (g *announcementGame) drawInfoPanel(screen *ebiten.Image) {
 	y := g.screenHeight - panelHeight - panelMargin
 
 	// Draw rounded panel.
-	panel := drawRoundedRect(panelWidth, panelHeight, panelRadius, color.NRGBA{R: 0, G: 0, B: 0, A: 200})
+	panel := drawRoundedRect(panelWidth, panelHeight, panelRadius, applyAlpha(color.NRGBA{R: 0, G: 0, B: 0, A: 200}, g.alpha))
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(x), float64(y))
 	screen.DrawImage(panel, op)
@@ -242,7 +256,7 @@ func (g *announcementGame) drawInfoPanel(screen *ebiten.Image) {
 	textY := y + panelPadding
 	drawer := &font.Drawer{
 		Dst:  screen,
-		Src:  image.NewUniform(color.White),
+		Src:  image.NewUniform(applyAlpha(color.NRGBA{R: 255, G: 255, B: 255, A: 255}, g.alpha)),
 		Face: g.titleFace,
 	}
 	for _, line := range titleLines {
@@ -254,7 +268,7 @@ func (g *announcementGame) drawInfoPanel(screen *ebiten.Image) {
 	// Draw description.
 	if len(descLines) > 0 {
 		textY += 8
-		drawer.Src = image.NewUniform(color.NRGBA{R: 220, G: 220, B: 220, A: 255})
+		drawer.Src = image.NewUniform(applyAlpha(color.NRGBA{R: 220, G: 220, B: 220, A: 255}, g.alpha))
 		drawer.Face = g.descriptionFace
 		for _, line := range descLines {
 			drawer.Dot = fixed.P(textX, textY+g.descriptionFace.Metrics().Ascent.Ceil())
@@ -273,7 +287,7 @@ func (g *announcementGame) drawInfoPanel(screen *ebiten.Image) {
 		// Link icon (small square with arrow-like shape).
 		g.drawLinkIcon(screen, textX, linkY+linkLineHeight/2-linkIconSize/2)
 
-		drawer.Src = image.NewUniform(color.NRGBA{R: 96, G: 165, B: 250, A: 255})
+		drawer.Src = image.NewUniform(applyAlpha(color.NRGBA{R: 96, G: 165, B: 250, A: 255}, g.alpha))
 		drawer.Face = g.linkFace
 		drawer.Dot = fixed.P(textX+linkIconSize+8, linkY+g.linkFace.Metrics().Ascent.Ceil())
 		drawer.DrawString(linkText)
@@ -282,7 +296,7 @@ func (g *announcementGame) drawInfoPanel(screen *ebiten.Image) {
 
 func (g *announcementGame) drawLinkIcon(screen *ebiten.Image, x, y int) {
 	icon := ebiten.NewImage(linkIconSize, linkIconSize)
-	c := color.NRGBA{R: 96, G: 165, B: 250, A: 255}
+	c := applyAlpha(color.NRGBA{R: 96, G: 165, B: 250, A: 255}, g.alpha)
 	// Draw a simple arrow-like box outline.
 	for i := 2; i < linkIconSize-2; i++ {
 		icon.Set(i, 2, c)
@@ -343,6 +357,8 @@ func Show(ctx context.Context, apiClient *api.Client, ann models.AgentAnnounceme
 		}
 	}
 
+	playNotificationSound()
+
 	screenWidth, screenHeight := ebiten.ScreenSizeInFullscreen()
 	windowWidth := int(float64(screenWidth) * 0.8)
 	windowHeight := int(float64(screenHeight) * 0.8)
@@ -373,16 +389,53 @@ func Show(ctx context.Context, apiClient *api.Client, ann models.AgentAnnounceme
 	return nil
 }
 
-func getLogoPath() (string, error) {
+func assetPath(name string) string {
 	agentPath, err := os.Executable()
 	if err != nil {
-		return "", err
+		return filepath.Join("assets", name)
 	}
-	logoPath := filepath.Join(filepath.Dir(agentPath), "assets", "logo.png")
+	return filepath.Join(filepath.Dir(agentPath), "assets", name)
+}
+
+func getLogoPath() (string, error) {
+	logoPath := assetPath("logo.png")
 	if _, err := os.Stat(logoPath); err != nil {
 		return "", err
 	}
 	return logoPath, nil
+}
+
+func playNotificationSound() {
+	go func() {
+		const sampleRate = 48000
+		audioContext := audio.NewContext(sampleRate)
+
+		path := assetPath("notification.mp3")
+		f, err := os.Open(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "notification sound not found: %v\n", err)
+			return
+		}
+		defer f.Close()
+
+		d, err := mp3.DecodeWithSampleRate(sampleRate, f)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "decode notification sound: %v\n", err)
+			return
+		}
+
+		p, err := audioContext.NewPlayer(d)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "create audio player: %v\n", err)
+			return
+		}
+		defer p.Close()
+
+		p.Play()
+		for p.IsPlaying() {
+			time.Sleep(25 * time.Millisecond)
+		}
+	}()
 }
 
 func loadFontFace(size float64, bold bool) font.Face {
@@ -615,4 +668,9 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func applyAlpha(c color.NRGBA, alpha float64) color.NRGBA {
+	c.A = uint8(float64(c.A) * alpha)
+	return c
 }
