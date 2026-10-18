@@ -25,14 +25,28 @@ func main() {
 	}
 
 	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "usage: %s <base64-announcement>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s <base64-announcement>|--file <json-file>\n", os.Args[0])
 		os.Exit(1)
 	}
 
-	payload, err := base64.StdEncoding.DecodeString(os.Args[1])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "decode announcement: %v\n", err)
-		os.Exit(1)
+	var payload []byte
+	var err error
+	if os.Args[1] == "--file" {
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "missing file path for --file")
+			os.Exit(1)
+		}
+		payload, err = os.ReadFile(os.Args[2])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "read announcement file: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		payload, err = base64.StdEncoding.DecodeString(os.Args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "decode announcement: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	var ann models.AgentAnnouncement
@@ -60,24 +74,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	var apiClient *api.Client
+
 	token, privateKey, err := tokenStore.Retrieve()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "retrieve credentials: %v\n", err)
-		os.Exit(1)
 	}
 	if token == "" || privateKey == nil {
-		fmt.Fprintln(os.Stderr, "credentials not found; please re-pair the agent")
-		os.Exit(1)
+		fmt.Fprintln(os.Stderr, "credentials not found; popup will be shown without reporting impression")
+	} else {
+		keyPair, err := auth.KeyPairFromPrivateKey(privateKey)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "load key pair: %v\n", err)
+		} else {
+			authBundle := auth.NewTokenAuth(token, keyPair)
+			apiClient = api.NewClient(cfg.CoreURL, authBundle)
+		}
 	}
-
-	keyPair, err := auth.KeyPairFromPrivateKey(privateKey)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "load key pair: %v\n", err)
-		os.Exit(1)
-	}
-
-	authBundle := auth.NewTokenAuth(token, keyPair)
-	apiClient := api.NewClient(cfg.CoreURL, authBundle)
 
 	fmt.Printf("popup starting for announcement %s\n", ann.Identifier)
 	if err := popup.Show(context.Background(), apiClient, ann); err != nil {

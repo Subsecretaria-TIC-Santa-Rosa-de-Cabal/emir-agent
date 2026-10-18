@@ -19,20 +19,30 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/api"
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
 )
 
-// closeButtonSize is the side length of the square close button.
-const closeButtonSize = 48
+// UI constants (in device-independent pixels) for a 1920x1080 reference design.
+const (
+	logoMaxWidth   = 160
+	closeBtnSize   = 40
+	closeBtnMargin = 24
+	logoMargin     = 24
+	panelMargin    = 32
+	panelPadding   = 24
+	panelRadius    = 16
+	linkIconSize   = 14
+)
 
-// announcementGame renders a fullscreen announcement image with optional title,
-// description and link. The image is scaled with "contain" logic (letterboxed).
+// announcementGame renders the announcement popup.
 type announcementGame struct {
 	ann       models.AgentAnnouncement
 	img       *ebiten.Image
+	logo      *ebiten.Image
 	apiClient *api.Client
 
 	screenWidth  int
@@ -41,6 +51,10 @@ type announcementGame struct {
 	closeRect rect
 	linkRect  rect
 	linkURL   string
+
+	titleFace       font.Face
+	descriptionFace font.Face
+	linkFace        font.Face
 }
 
 type rect struct {
@@ -56,12 +70,21 @@ func (g *announcementGame) Update() error {
 		return ebiten.Termination
 	}
 
+	x, y := ebiten.CursorPosition()
+	hoverClose := g.closeRect.contains(x, y)
+	hoverLink := g.linkRect.contains(x, y) && g.linkURL != ""
+
+	if hoverClose || hoverLink {
+		ebiten.SetCursorShape(ebiten.CursorShapePointer)
+	} else {
+		ebiten.SetCursorShape(ebiten.CursorShapeDefault)
+	}
+
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		x, y := ebiten.CursorPosition()
-		if g.closeRect.contains(x, y) {
+		if hoverClose {
 			return ebiten.Termination
 		}
-		if g.linkRect.contains(x, y) && g.linkURL != "" {
+		if hoverLink {
 			openURL(g.linkURL)
 		}
 	}
@@ -72,19 +95,33 @@ func (g *announcementGame) Update() error {
 func (g *announcementGame) Draw(screen *ebiten.Image) {
 	g.screenWidth, g.screenHeight = screen.Size()
 
-	// Black background.
-	screen.Fill(color.Black)
+	// Draw background image covering the whole window (cover scaling).
+	g.drawBackground(screen)
 
+	// Draw logo at top-left.
+	g.drawLogo(screen)
+
+	// Draw close button at top-right.
+	g.drawCloseButton(screen)
+
+	// Draw info panel at bottom-left.
+	g.drawInfoPanel(screen)
+}
+
+func (g *announcementGame) drawBackground(screen *ebiten.Image) {
 	if g.img == nil {
+		screen.Fill(color.Black)
 		return
 	}
 
-	// Draw image with contain scaling.
 	iw, ih := g.img.Bounds().Dx(), g.img.Bounds().Dy()
-	scale := 1.0
-	if iw > 0 && ih > 0 {
-		scale = min(float64(g.screenWidth)/float64(iw), float64(g.screenHeight)/float64(ih))
+	if iw == 0 || ih == 0 {
+		screen.Fill(color.Black)
+		return
 	}
+
+	// Cover scaling: fill entire window, cropping edges if aspect ratios differ.
+	scale := max(float64(g.screenWidth)/float64(iw), float64(g.screenHeight)/float64(ih))
 	dw := float64(iw) * scale
 	dh := float64(ih) * scale
 	dx := (float64(g.screenWidth) - dw) / 2
@@ -94,98 +131,181 @@ func (g *announcementGame) Draw(screen *ebiten.Image) {
 	op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(dx, dy)
 	screen.DrawImage(g.img, op)
-
-	// Draw close button (top-right).
-	g.closeRect = rect{x: g.screenWidth - closeButtonSize - 16, y: 16, w: closeButtonSize, h: closeButtonSize}
-	g.drawCloseButton(screen, g.closeRect)
-
-	// Draw title/description/link panel at the bottom.
-	texts := []string{}
-	if g.ann.Title != "" {
-		texts = append(texts, g.ann.Title)
-	}
-	if g.ann.Description != nil && *g.ann.Description != "" {
-		texts = append(texts, *g.ann.Description)
-	}
-	if g.ann.LinkURL != nil && *g.ann.LinkURL != "" {
-		g.linkURL = *g.ann.LinkURL
-		texts = append(texts, "Abrir enlace")
-	} else {
-		g.linkURL = ""
-	}
-
-	if len(texts) > 0 {
-		g.drawBottomPanel(screen, texts)
-	}
 }
 
-func (g *announcementGame) drawCloseButton(screen *ebiten.Image, r rect) {
-	// Red background.
-	btn := ebiten.NewImage(r.w, r.h)
-	btn.Fill(color.RGBA{R: 220, G: 38, B: 38, A: 255})
+func (g *announcementGame) drawLogo(screen *ebiten.Image) {
+	if g.logo == nil {
+		return
+	}
+	lw, lh := g.logo.Bounds().Dx(), g.logo.Bounds().Dy()
+	if lw == 0 || lh == 0 {
+		return
+	}
+
+	scale := 1.0
+	if lw > logoMaxWidth {
+		scale = float64(logoMaxWidth) / float64(lw)
+	}
+	w := int(float64(lw) * scale)
+	h := int(float64(lh) * scale)
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate(float64(logoMargin), float64(logoMargin))
+	screen.DrawImage(g.logo, op)
+
+	_ = h
+	_ = w
+}
+
+func (g *announcementGame) drawCloseButton(screen *ebiten.Image) {
+	x := g.screenWidth - closeBtnSize - closeBtnMargin
+	y := closeBtnMargin
+	g.closeRect = rect{x: x, y: y, w: closeBtnSize, h: closeBtnSize}
+
+	btn := ebiten.NewImage(closeBtnSize, closeBtnSize)
+	// Black background circle.
+	cx, cy, r := closeBtnSize/2, closeBtnSize/2, closeBtnSize/2
+	for py := 0; py < closeBtnSize; py++ {
+		for px := 0; px < closeBtnSize; px++ {
+			dx := px - cx
+			dy := py - cy
+			if dx*dx+dy*dy <= r*r {
+				btn.Set(px, py, color.NRGBA{R: 0, G: 0, B: 0, A: 200})
+			}
+		}
+	}
 
 	// White X.
-	padding := r.w / 4
-	colorX := color.White
-	for i := 0; i < r.w-2*padding; i++ {
-		btn.Set(padding+i, padding+i, colorX)
-		btn.Set(r.w-padding-i-1, padding+i, colorX)
+	padding := closeBtnSize / 4
+	c := color.White
+	for i := 0; i < closeBtnSize-2*padding; i++ {
+		btn.Set(padding+i, padding+i, c)
+		btn.Set(closeBtnSize-padding-i-1, padding+i, c)
 	}
 
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(r.x), float64(r.y))
+	op.GeoM.Translate(float64(x), float64(y))
 	screen.DrawImage(btn, op)
 }
 
-func (g *announcementGame) drawBottomPanel(screen *ebiten.Image, texts []string) {
-	lineHeight := 18
-	panelPadding := 16
-	panelHeight := len(texts)*lineHeight + 2*panelPadding
+func (g *announcementGame) drawInfoPanel(screen *ebiten.Image) {
+	titleText := g.ann.Title
+	descText := ""
+	if g.ann.Description != nil {
+		descText = *g.ann.Description
+	}
+	g.linkURL = ""
+	if g.ann.LinkURL != nil {
+		g.linkURL = *g.ann.LinkURL
+	}
+
+	if titleText == "" && descText == "" && g.linkURL == "" {
+		return
+	}
+
+	// Panel spans the full window width respecting horizontal margins.
+	panelWidth := g.screenWidth - panelMargin*2
+	if panelWidth < 320 {
+		panelWidth = 320
+	}
+	availableTextWidth := panelWidth - panelPadding*2
+
+	titleLines := wrapText(titleText, g.titleFace, availableTextWidth)
+	descLines := wrapText(descText, g.descriptionFace, availableTextWidth)
+
+	titleLineHeight := g.titleFace.Metrics().Height.Ceil()
+	descLineHeight := g.descriptionFace.Metrics().Height.Ceil()
+	linkLineHeight := g.linkFace.Metrics().Height.Ceil()
+
+	linkText := "Conocer mas"
+
+	panelHeight := panelPadding*2 + len(titleLines)*titleLineHeight + len(descLines)*descLineHeight
 	if g.linkURL != "" {
-		panelHeight += 4
+		panelHeight += 12 + linkLineHeight
+	}
+	if len(titleLines) > 0 && len(descLines) > 0 {
+		panelHeight += 8
 	}
 
-	panelImg := image.NewRGBA(image.Rect(0, 0, g.screenWidth, panelHeight))
-	// Semi-transparent black background.
-	draw.Draw(panelImg, panelImg.Bounds(), image.NewUniform(color.NRGBA{R: 0, G: 0, B: 0, A: 200}), image.Point{}, draw.Src)
+	x := panelMargin
+	y := g.screenHeight - panelHeight - panelMargin
 
-	drawer := font.Drawer{
-		Dst:  panelImg,
-		Src:  image.NewUniform(color.White),
-		Face: basicfont.Face7x13,
-		Dot: fixed.Point26_6{
-			X: fixed.I(panelPadding),
-			Y: fixed.I(panelPadding + basicfont.Face7x13.Metrics().Ascent.Ceil()),
-		},
-	}
-
-	for i, t := range texts {
-		if g.linkURL != "" && i == len(texts)-1 {
-			drawer.Src = image.NewUniform(color.RGBA{R: 96, G: 165, B: 250, A: 255})
-			g.linkRect = rect{
-				x: panelPadding,
-				y: g.screenHeight - panelHeight + panelPadding + i*lineHeight - 2,
-				w: len(t) * 7,
-				h: lineHeight,
-			}
-		} else {
-			drawer.Src = image.NewUniform(color.White)
-		}
-		drawer.DrawString(t)
-		drawer.Dot.Y += fixed.I(lineHeight)
-	}
-
-	eimg := ebiten.NewImageFromImage(panelImg)
+	// Draw rounded panel.
+	panel := drawRoundedRect(panelWidth, panelHeight, panelRadius, color.NRGBA{R: 0, G: 0, B: 0, A: 200})
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(0, float64(g.screenHeight-panelHeight))
-	screen.DrawImage(eimg, op)
+	op.GeoM.Translate(float64(x), float64(y))
+	screen.DrawImage(panel, op)
+
+	// Draw title.
+	textX := x + panelPadding
+	textY := y + panelPadding
+	drawer := &font.Drawer{
+		Dst:  screen,
+		Src:  image.NewUniform(color.White),
+		Face: g.titleFace,
+	}
+	for _, line := range titleLines {
+		drawer.Dot = fixed.P(textX, textY+g.titleFace.Metrics().Ascent.Ceil())
+		drawer.DrawString(line)
+		textY += titleLineHeight
+	}
+
+	// Draw description.
+	if len(descLines) > 0 {
+		textY += 8
+		drawer.Src = image.NewUniform(color.NRGBA{R: 220, G: 220, B: 220, A: 255})
+		drawer.Face = g.descriptionFace
+		for _, line := range descLines {
+			drawer.Dot = fixed.P(textX, textY+g.descriptionFace.Metrics().Ascent.Ceil())
+			drawer.DrawString(line)
+			textY += descLineHeight
+		}
+	}
+
+	// Draw link.
+	if g.linkURL != "" {
+		textY += 12
+		linkY := textY
+		linkW := textWidth([]string{linkText}, g.linkFace) + linkIconSize + 8
+		g.linkRect = rect{x: textX, y: linkY, w: linkW, h: linkLineHeight}
+
+		// Link icon (small square with arrow-like shape).
+		g.drawLinkIcon(screen, textX, linkY+linkLineHeight/2-linkIconSize/2)
+
+		drawer.Src = image.NewUniform(color.NRGBA{R: 96, G: 165, B: 250, A: 255})
+		drawer.Face = g.linkFace
+		drawer.Dot = fixed.P(textX+linkIconSize+8, linkY+g.linkFace.Metrics().Ascent.Ceil())
+		drawer.DrawString(linkText)
+	}
+}
+
+func (g *announcementGame) drawLinkIcon(screen *ebiten.Image, x, y int) {
+	icon := ebiten.NewImage(linkIconSize, linkIconSize)
+	c := color.NRGBA{R: 96, G: 165, B: 250, A: 255}
+	// Draw a simple arrow-like box outline.
+	for i := 2; i < linkIconSize-2; i++ {
+		icon.Set(i, 2, c)
+		icon.Set(2, i, c)
+		icon.Set(linkIconSize-3, i, c)
+		icon.Set(i, linkIconSize-3, c)
+	}
+	// Arrow head.
+	for i := 0; i < 5; i++ {
+		icon.Set(linkIconSize-4-i, i+3, c)
+		icon.Set(linkIconSize-4-i, i+4, c)
+	}
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(x), float64(y))
+	screen.DrawImage(icon, op)
 }
 
 func (g *announcementGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return outsideWidth, outsideHeight
 }
 
-// Show downloads the announcement image and displays it in a fullscreen popup.
+// Show downloads the announcement image and displays it in a popup window.
 // It reports the impression to the backend immediately after the window is shown.
 func Show(ctx context.Context, apiClient *api.Client, ann models.AgentAnnouncement) error {
 	if ann.ImageDownloadURL == "" {
@@ -210,6 +330,19 @@ func Show(ctx context.Context, apiClient *api.Client, ann models.AgentAnnounceme
 		return fmt.Errorf("load image: %w", err)
 	}
 
+	logoPath, err := getLogoPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "logo not found: %v\n", err)
+	}
+	var logoImg *ebiten.Image
+	if logoPath != "" {
+		logoImg, _, err = ebitenutil.NewImageFromFile(logoPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "load logo: %v\n", err)
+			logoImg = nil
+		}
+	}
+
 	screenWidth, screenHeight := ebiten.ScreenSizeInFullscreen()
 	windowWidth := int(float64(screenWidth) * 0.8)
 	windowHeight := int(float64(screenHeight) * 0.8)
@@ -225,15 +358,199 @@ func Show(ctx context.Context, apiClient *api.Client, ann models.AgentAnnounceme
 	ebiten.SetVsyncEnabled(true)
 
 	game := &announcementGame{
-		ann:       ann,
-		img:       img,
-		apiClient: apiClient,
+		ann:             ann,
+		img:             img,
+		logo:            logoImg,
+		apiClient:       apiClient,
+		titleFace:       loadFontFace(26, true),
+		descriptionFace: loadFontFace(16, false),
+		linkFace:        loadFontFace(15, false),
 	}
 
 	if err := ebiten.RunGame(game); err != nil && err != ebiten.Termination {
 		return fmt.Errorf("run game: %w", err)
 	}
 	return nil
+}
+
+func getLogoPath() (string, error) {
+	agentPath, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	logoPath := filepath.Join(filepath.Dir(agentPath), "assets", "logo.png")
+	if _, err := os.Stat(logoPath); err != nil {
+		return "", err
+	}
+	return logoPath, nil
+}
+
+func loadFontFace(size float64, bold bool) font.Face {
+	var paths []string
+	switch runtime.GOOS {
+	case "windows":
+		if bold {
+			paths = []string{
+				`C:\Windows\Fonts\segoeuib.ttf`,
+				`C:\Windows\Fonts\arialbd.ttf`,
+				`C:\Windows\Fonts\tahomabd.ttf`,
+				`C:\Windows\Fonts\verdanab.ttf`,
+			}
+		} else {
+			paths = []string{
+				`C:\Windows\Fonts\segoeui.ttf`,
+				`C:\Windows\Fonts\arial.ttf`,
+				`C:\Windows\Fonts\tahoma.ttf`,
+				`C:\Windows\Fonts\verdana.ttf`,
+			}
+		}
+	case "darwin":
+		if bold {
+			paths = []string{
+				"/Library/Fonts/Arial Bold.ttf",
+				"/System/Library/Fonts/Helvetica.ttc",
+				"/System/Library/Fonts/HelveticaNeue.ttc",
+			}
+		} else {
+			paths = []string{
+				"/Library/Fonts/Arial.ttf",
+				"/System/Library/Fonts/Helvetica.ttc",
+				"/System/Library/Fonts/HelveticaNeue.ttc",
+			}
+		}
+	default:
+		if bold {
+			paths = []string{
+				"/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+				"/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+				"/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+				"/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+			}
+		} else {
+			paths = []string{
+				"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+				"/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+				"/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+				"/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+			}
+		}
+	}
+
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		ttf, err := opentype.Parse(data)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to parse font %s: %v\n", path, err)
+			continue
+		}
+		face, err := opentype.NewFace(ttf, &opentype.FaceOptions{
+			Size:    size,
+			DPI:     96,
+			Hinting: font.HintingFull,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to create face for %s: %v\n", path, err)
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "loaded font: %s (size %.0f, bold=%v)\n", path, size, bold)
+		return face
+	}
+
+	fmt.Fprintln(os.Stderr, "no system font found; falling back to basic font (limited character support)")
+	return basicfont.Face7x13
+}
+
+func drawRoundedRect(width, height, radius int, c color.Color) *ebiten.Image {
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	draw.Draw(img, img.Bounds(), image.NewUniform(c), image.Point{}, draw.Src)
+
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			var inCorner bool
+			switch {
+			case x < radius && y < radius:
+				inCorner = (x-radius)*(x-radius)+(y-radius)*(y-radius) > radius*radius
+			case x >= width-radius && y < radius:
+				cx := width - radius
+				inCorner = (x-cx)*(x-cx)+(y-radius)*(y-radius) > radius*radius
+			case x < radius && y >= height-radius:
+				cy := height - radius
+				inCorner = (x-radius)*(x-radius)+(y-cy)*(y-cy) > radius*radius
+			case x >= width-radius && y >= height-radius:
+				cx := width - radius
+				cy := height - radius
+				inCorner = (x-cx)*(x-cx)+(y-cy)*(y-cy) > radius*radius
+			}
+			if inCorner {
+				img.Set(x, y, color.Transparent)
+			}
+		}
+	}
+
+	return ebiten.NewImageFromImage(img)
+}
+
+func textWidth(lines []string, face font.Face) int {
+	maxW := 0
+	for _, line := range lines {
+		w := font.MeasureString(face, line).Ceil()
+		if w > maxW {
+			maxW = w
+		}
+	}
+	return maxW
+}
+
+func wrapText(text string, face font.Face, maxWidth int) []string {
+	if text == "" {
+		return nil
+	}
+	words := splitWords(text)
+	var lines []string
+	var current string
+	for _, word := range words {
+		test := current
+		if test != "" {
+			test += " "
+		}
+		test += word
+		if font.MeasureString(face, test).Ceil() > maxWidth && current != "" {
+			lines = append(lines, current)
+			current = word
+		} else {
+			current = test
+		}
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+	return lines
+}
+
+func splitWords(text string) []string {
+	var words []string
+	var start int
+	for i, r := range text {
+		if r == ' ' || r == '\n' || r == '\t' {
+			if i > start {
+				words = append(words, text[start:i])
+			}
+			if r == '\n' {
+				words = append(words, "\n")
+			}
+			start = i + 1
+		}
+	}
+	if start < len(text) {
+		words = append(words, text[start:])
+	}
+	return words
 }
 
 func downloadImage(ctx context.Context, url string) (string, error) {
@@ -281,6 +598,20 @@ func openURL(link string) {
 
 func min(a, b float64) float64 {
 	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a, b int) int {
+	if a > b {
 		return a
 	}
 	return b

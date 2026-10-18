@@ -16,4 +16,5 @@ require (
 	golang.org/x/exp/shiny v0.0.0-20230817173708-d852ddb80c63 // indirect
 	golang.org/x/mobile v0.0.0-20230922142353-e2f452493d57 // indirect
 	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )
