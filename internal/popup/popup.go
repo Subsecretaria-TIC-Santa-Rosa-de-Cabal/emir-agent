@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -45,6 +46,7 @@ const (
 type announcementGame struct {
 	ann       models.AgentAnnouncement
 	img       *ebiten.Image
+	imgMu     sync.RWMutex
 	logo      *ebiten.Image
 	apiClient *api.Client
 
@@ -120,12 +122,16 @@ func (g *announcementGame) Draw(screen *ebiten.Image) {
 }
 
 func (g *announcementGame) drawBackground(screen *ebiten.Image) {
-	if g.img == nil {
+	g.imgMu.RLock()
+	img := g.img
+	g.imgMu.RUnlock()
+
+	if img == nil {
 		screen.Fill(color.Black)
 		return
 	}
 
-	iw, ih := g.img.Bounds().Dx(), g.img.Bounds().Dy()
+	iw, ih := img.Bounds().Dx(), img.Bounds().Dy()
 	if iw == 0 || ih == 0 {
 		screen.Fill(color.Black)
 		return
@@ -142,7 +148,7 @@ func (g *announcementGame) drawBackground(screen *ebiten.Image) {
 	op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(dx, dy)
 	op.ColorScale.Scale(1, 1, 1, float32(g.alpha))
-	screen.DrawImage(g.img, op)
+	screen.DrawImage(img, op)
 }
 
 func (g *announcementGame) drawLogo(screen *ebiten.Image) {
@@ -319,40 +325,26 @@ func (g *announcementGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return outsideWidth, outsideHeight
 }
 
-// Show downloads the announcement image and displays it in a popup window.
-// It reports the impression to the backend immediately after the window is shown.
+// Show displays the announcement popup. The image is downloaded asynchronously
+// so the window appears immediately; the background stays black until the image
+// is ready.
 func Show(ctx context.Context, apiClient *api.Client, ann models.AgentAnnouncement) error {
 	if ann.ImageDownloadURL == "" {
 		return fmt.Errorf("announcement has no image download URL")
 	}
 
-	imgPath, err := downloadImage(ctx, ann.ImageDownloadURL)
-	if err != nil {
-		return fmt.Errorf("download image: %w", err)
-	}
-	defer os.Remove(imgPath)
-
-	// Report impression as soon as we are about to show the popup.
-	if apiClient != nil {
-		if err := apiClient.ReportAnnouncementImpression(ctx, ann.Identifier); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to report announcement impression: %v\n", err)
-		}
-	}
-
-	img, _, err := ebitenutil.NewImageFromFile(imgPath)
-	if err != nil {
-		return fmt.Errorf("load image: %w", err)
-	}
+	fmt.Fprintf(os.Stderr, "popup: showing announcement %s\n", ann.Identifier)
+	fmt.Fprintf(os.Stderr, "popup: image URL %s\n", ann.ImageDownloadURL)
 
 	logoPath, err := getLogoPath()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "logo not found: %v\n", err)
+		fmt.Fprintf(os.Stderr, "popup: logo not found: %v\n", err)
 	}
 	var logoImg *ebiten.Image
 	if logoPath != "" {
 		logoImg, _, err = ebitenutil.NewImageFromFile(logoPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "load logo: %v\n", err)
+			fmt.Fprintf(os.Stderr, "popup: load logo failed: %v\n", err)
 			logoImg = nil
 		}
 	}
@@ -375,7 +367,6 @@ func Show(ctx context.Context, apiClient *api.Client, ann models.AgentAnnounceme
 
 	game := &announcementGame{
 		ann:             ann,
-		img:             img,
 		logo:            logoImg,
 		apiClient:       apiClient,
 		titleFace:       loadFontFace(26, true),
@@ -383,9 +374,41 @@ func Show(ctx context.Context, apiClient *api.Client, ann models.AgentAnnounceme
 		linkFace:        loadFontFace(15, false),
 	}
 
+	// Download the image asynchronously so the window opens immediately.
+	go func() {
+		fmt.Fprintln(os.Stderr, "popup: starting image download")
+		imgPath, err := downloadImage(ctx, ann.ImageDownloadURL)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "popup: image download failed: %v\n", err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "popup: image saved to %s\n", imgPath)
+		defer os.Remove(imgPath)
+
+		img, _, err := ebitenutil.NewImageFromFile(imgPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "popup: load image failed: %v\n", err)
+			return
+		}
+
+		game.imgMu.Lock()
+		game.img = img
+		game.imgMu.Unlock()
+		fmt.Fprintln(os.Stderr, "popup: image ready")
+	}()
+
+	// Report impression right before the window is shown.
+	if apiClient != nil {
+		if err := apiClient.ReportAnnouncementImpression(ctx, ann.Identifier); err != nil {
+			fmt.Fprintf(os.Stderr, "popup: failed to report impression: %v\n", err)
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "popup: running game loop")
 	if err := ebiten.RunGame(game); err != nil && err != ebiten.Termination {
 		return fmt.Errorf("run game: %w", err)
 	}
+	fmt.Fprintln(os.Stderr, "popup: game loop ended")
 	return nil
 }
 
@@ -607,12 +630,14 @@ func splitWords(text string) []string {
 }
 
 func downloadImage(ctx context.Context, url string) (string, error) {
-	client := &http.Client{Timeout: 2 * time.Minute}
+	// Large announcement images can take a while on slow connections.
+	client := &http.Client{Timeout: 10 * time.Minute}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
 	}
 
+	fmt.Fprintf(os.Stderr, "popup: GET %s\n", url)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -628,11 +653,13 @@ func downloadImage(ctx context.Context, url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer out.Close()
 
-	if _, err := io.Copy(out, resp.Body); err != nil {
+	written, err := io.Copy(out, resp.Body)
+	out.Close()
+	if err != nil {
 		return "", err
 	}
+	fmt.Fprintf(os.Stderr, "popup: downloaded %d bytes\n", written)
 	return imgPath, nil
 }
 
