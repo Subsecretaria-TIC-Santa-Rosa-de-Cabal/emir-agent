@@ -82,10 +82,13 @@ jobs:
           fi
           go build -ldflags "$POPUP_LDFLAGS" -o "dist/$POPUP_ASSET" ./cmd/popup
 
+          # Include assets (logo and notification sound) in the release archive.
+          cp -r assets dist/assets
+
           if [ "$IS_WINDOWS" = "true" ]; then
-            powershell -Command 'Compress-Archive -Path dist\$env:ASSET,dist\$env:POPUP_ASSET -DestinationPath dist\$env:ARCHIVE -Force'
+            powershell -Command 'Compress-Archive -Path dist\$env:ASSET,dist\$env:POPUP_ASSET,dist\assets -DestinationPath dist\$env:ARCHIVE -Force'
           else
-            tar -czf "dist/$ARCHIVE" -C dist "$ASSET" "$POPUP_ASSET"
+            tar -czf "dist/$ARCHIVE" -C dist "$ASSET" "$POPUP_ASSET" "assets"
           fi
 
           sha256sum "dist/$ASSET" | awk '{print $1}' > "dist/$ASSET.sha256"

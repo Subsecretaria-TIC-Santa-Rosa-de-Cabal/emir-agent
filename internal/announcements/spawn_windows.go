@@ -29,19 +29,18 @@ var (
 // visible when the agent is running as a service. If that fails (for example,
 // when the agent is running interactively or there is no logged-on user), it
 // falls back to a detached child process.
-func startPopup(popupPath string, encoded string, logFile *os.File) error {
-	cmd := exec.Command(popupPath, encoded)
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
+func startPopup(popupPath string, announcementFile string) error {
+	args := []string{"--file", announcementFile}
+	cmd := exec.Command(popupPath, args...)
 
-	if err := startPopupInUserSession(popupPath, encoded, logFile); err != nil {
+	if err := startPopupInUserSession(popupPath, announcementFile); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start popup in user session: %v; falling back to detached\n", err)
 		return updater.StartDetached(cmd)
 	}
 	return nil
 }
 
-func startPopupInUserSession(popupPath string, encoded string, logFile *os.File) error {
+func startPopupInUserSession(popupPath string, announcementFile string) error {
 	sessionID, err := getActiveConsoleSessionID()
 	if err != nil {
 		return err
@@ -59,7 +58,7 @@ func startPopupInUserSession(popupPath string, encoded string, logFile *os.File)
 	}
 	defer destroyEnvironmentBlock(envBlock)
 
-	cmdLine := fmt.Sprintf(`"%s" %s`, popupPath, encoded)
+	cmdLine := fmt.Sprintf(`"%s" --file "%s"`, popupPath, announcementFile)
 
 	var si windows.StartupInfo
 	si.Cb = uint32(unsafe.Sizeof(si))

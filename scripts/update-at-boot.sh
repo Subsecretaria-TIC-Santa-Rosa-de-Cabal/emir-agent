@@ -30,7 +30,7 @@ log() {
 read_meta() {
     REPO="Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent"
     VERSION=""
-    ASSET="emir-agent-linux-amd64"
+    ARCHIVE="emir-agent-linux-amd64.tar.gz"
 
     if [ -f "$META_FILE" ]; then
         # shellcheck source=/dev/null
@@ -61,10 +61,10 @@ recover_agent() {
         return 1
     fi
 
-    local tag asset url checksum_url
+    local tag archive url checksum_url
     tag="v$VERSION"
-    asset="$ASSET"
-    url="https://github.com/$REPO/releases/download/$tag/$asset"
+    archive="$ARCHIVE"
+    url="https://github.com/$REPO/releases/download/$tag/$archive"
     checksum_url="$url.sha256"
 
     log "Recovery mode: downloading $VERSION from $url"
@@ -74,12 +74,12 @@ recover_agent() {
     # shellcheck disable=SC2064
     trap "rm -rf '$tmpdir'" RETURN
 
-    curl -fsSL -A "emir-agent-boot-updater" -o "$tmpdir/$asset" "$url"
+    curl -fsSL -A "emir-agent-boot-updater" -o "$tmpdir/$archive" "$url"
 
-    if curl -fsSL -A "emir-agent-boot-updater" -o "$tmpdir/$asset.sha256" "$checksum_url" 2>/dev/null; then
+    if curl -fsSL -A "emir-agent-boot-updater" -o "$tmpdir/$archive.sha256" "$checksum_url" 2>/dev/null; then
         local expected actual
-        expected=$(tr -d '[:space:]' < "$tmpdir/$asset.sha256")
-        actual=$(sha256sum "$tmpdir/$asset" | awk '{print $1}')
+        expected=$(tr -d '[:space:]' < "$tmpdir/$archive.sha256")
+        actual=$(sha256sum "$tmpdir/$archive" | awk '{print $1}')
         if [ "$actual" != "$expected" ]; then
             log "Recovery checksum mismatch: expected $expected, got $actual"
             return 1
@@ -89,10 +89,27 @@ recover_agent() {
         log "Could not download recovery checksum; proceeding without verification"
     fi
 
+    tar -xzf "$tmpdir/$archive" -C "$tmpdir"
+    local agent_source="$tmpdir/emir-agent-linux-amd64"
+    local popup_source="$tmpdir/emir-agent-popup-linux-amd64"
+    local assets_source="$tmpdir/assets"
+
+    if [ ! -f "$agent_source" ]; then
+        log "Agent binary not found in recovered archive"
+        return 1
+    fi
+
     mkdir -p "$INSTALL_DIR"
-    mv -f "$tmpdir/$asset" "$BINARY"
+    mv -f "$agent_source" "$BINARY"
     chmod +x "$BINARY"
-    log "Agent binary restored to $BINARY"
+    if [ -f "$popup_source" ]; then
+        mv -f "$popup_source" "$INSTALL_DIR/emir-agent-popup"
+        chmod +x "$INSTALL_DIR/emir-agent-popup"
+    fi
+    if [ -d "$assets_source" ]; then
+        cp -r "$assets_source" "$INSTALL_DIR/assets"
+    fi
+    log "Agent restored to $INSTALL_DIR"
 }
 
 run_update_check() {

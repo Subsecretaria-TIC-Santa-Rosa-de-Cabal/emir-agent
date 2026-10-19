@@ -44,8 +44,7 @@ chmod +x "$INSTALL_DIR/update-at-boot.sh"
 cat > "$INSTALL_DIR/install.conf" <<EOF
 REPO=$REPO
 VERSION=$VERSION
-AGENT_ASSET=emir-agent-linux-amd64
-POPUP_ASSET=emir-agent-popup-linux-amd64
+ARCHIVE=emir-agent-linux-amd64.tar.gz
 EOF
 
 if [ -n "$CORE_URL" ]; then

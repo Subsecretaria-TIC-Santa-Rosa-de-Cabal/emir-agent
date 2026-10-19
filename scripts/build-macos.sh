@@ -30,9 +30,12 @@ echo "Building $POPUP_BINARY_NAME (version $VERSION)..."
 CGO_ENABLED=1 go build -ldflags "$POPUP_LDFLAGS" -o "$POPUP_BINARY_PATH" "$PROJECT_ROOT/cmd/popup"
 
 cp "$SCRIPT_DIR/update-at-boot-macos.sh" "$OUTPUT_DIR/update-at-boot-macos.sh"
+if [ -d "$PROJECT_ROOT/assets" ]; then
+    cp -r "$PROJECT_ROOT/assets" "$OUTPUT_DIR/assets"
+fi
 
 TAR_PATH="$OUTPUT_DIR/$AGENT_BINARY_NAME.tar.gz"
-tar -czf "$TAR_PATH" -C "$OUTPUT_DIR" "$AGENT_BINARY_NAME" "$POPUP_BINARY_NAME" "update-at-boot-macos.sh"
+tar -czf "$TAR_PATH" -C "$OUTPUT_DIR" "$AGENT_BINARY_NAME" "$POPUP_BINARY_NAME" "update-at-boot-macos.sh" "assets"
 
 echo "Built: $AGENT_BINARY_PATH"
 echo "Built: $POPUP_BINARY_PATH"

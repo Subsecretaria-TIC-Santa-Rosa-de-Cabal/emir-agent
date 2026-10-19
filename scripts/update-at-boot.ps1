@@ -40,7 +40,7 @@ function Read-InstallMeta {
     $meta = @{
         Repo = "Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent"
         Version = ""
-        Asset = "emir-agent-windows-amd64.exe"
+        Archive = "emir-agent-windows-amd64.zip"
     }
     if (Test-Path $MetaFile) {
         Get-Content $MetaFile | ForEach-Object {
@@ -93,7 +93,7 @@ function Recover-Agent {
         $tagVersion = "v$tagVersion"
     }
 
-    $downloadUrl = "https://github.com/$($meta.Repo)/releases/download/$tagVersion/$($meta.Asset)"
+    $downloadUrl = "https://github.com/$($meta.Repo)/releases/download/$tagVersion/$($meta.Archive)"
     $checksumUrl = "$downloadUrl.sha256"
 
     Write-Log "Recovery mode: downloading $($meta.Version) from $downloadUrl"
@@ -101,14 +101,14 @@ function Recover-Agent {
     $tempDir = Join-Path $env:TEMP "emir-agent-recovery-$([Guid]::NewGuid())"
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
     try {
-        $tempBin = Join-Path $tempDir $meta.Asset
-        Download-File -Url $downloadUrl -OutFile $tempBin
+        $tempArchive = Join-Path $tempDir $meta.Archive
+        Download-File -Url $downloadUrl -OutFile $tempArchive
 
         try {
             $expectedHash = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing -Headers @{
                 'User-Agent' = 'emir-agent-boot-updater'
             } -ErrorAction Stop).Content.Trim()
-            $actualHash = (Get-FileHash -Path $tempBin -Algorithm SHA256).Hash.ToLower()
+            $actualHash = (Get-FileHash -Path $tempArchive -Algorithm SHA256).Hash.ToLower()
             if ($actualHash -ne $expectedHash.ToLower()) {
                 throw "Checksum mismatch: expected $expectedHash, got $actualHash"
             }
@@ -117,9 +117,33 @@ function Recover-Agent {
             Write-Log "Could not verify recovery checksum: $_"
         }
 
+        Expand-Archive -Path $tempArchive -DestinationPath $tempDir -Force
+        $agentSource = Join-Path $tempDir "emir-agent-windows-amd64.exe"
+        $popupSource = Join-Path $tempDir "emir-agent-popup-windows-amd64.exe"
+        $assetsSource = Join-Path $tempDir "assets"
+
+        if (-not (Test-Path $agentSource)) {
+            throw "Agent binary not found in recovered archive"
+        }
+
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-        Move-Item -Path $tempBin -Destination $Binary -Force
-        Write-Log "Agent binary restored to $Binary"
+        Move-Item -Path $agentSource -Destination $Binary -Force
+        if (Test-Path $popupSource) {
+            Move-Item -Path $popupSource -Destination (Join-Path $InstallDir "emir-agent-popup.exe") -Force
+        }
+        if (Test-Path $assetsSource) {
+            $assetsDest = Join-Path $InstallDir "assets"
+            New-Item -ItemType Directory -Path $assetsDest -Force | Out-Null
+            Get-ChildItem -Path $assetsSource -Recurse | ForEach-Object {
+                $dest = $_.FullName.Replace($assetsSource, $assetsDest)
+                if ($_.PSIsContainer) {
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                } else {
+                    Copy-Item -Path $_.FullName -Destination $dest -Force
+                }
+            }
+        }
+        Write-Log "Agent restored to $InstallDir"
     } finally {
         Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
     }

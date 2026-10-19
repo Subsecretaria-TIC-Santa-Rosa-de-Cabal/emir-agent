@@ -1,12 +1,12 @@
 package announcements
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/models"
 )
@@ -29,7 +29,12 @@ func SpawnAnnouncementViewer(ann models.AgentAnnouncement) error {
 		return fmt.Errorf("marshal announcement: %w", err)
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(payload)
+	// Write the announcement to a temporary file and pass the path to the popup.
+	// This avoids command-line length limits and escaping issues with long URLs.
+	announcementFile := filepath.Join(os.TempDir(), fmt.Sprintf("emir-announcement-%d.json", time.Now().UnixNano()))
+	if err := os.WriteFile(announcementFile, payload, 0644); err != nil {
+		return fmt.Errorf("write announcement file: %w", err)
+	}
 
 	agentPath, err := os.Executable()
 	if err != nil {
@@ -42,14 +47,7 @@ func SpawnAnnouncementViewer(ann models.AgentAnnouncement) error {
 		return fmt.Errorf("popup binary not found at %s: %w", popupPath, err)
 	}
 
-	logPath := filepath.Join(os.TempDir(), "emir-agent-popup.log")
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("open popup log: %w", err)
-	}
-	defer logFile.Close()
+	fmt.Printf("spawning popup viewer: %s (announcement: %s)\n", popupPath, announcementFile)
 
-	fmt.Printf("spawning popup viewer: %s (log: %s)\n", popupPath, logPath)
-
-	return startPopup(popupPath, encoded, logFile)
+	return startPopup(popupPath, announcementFile)
 }

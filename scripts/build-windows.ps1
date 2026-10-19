@@ -49,13 +49,20 @@ $BootScript = Join-Path $PSScriptRoot "update-at-boot.ps1"
 $BootScriptDest = Join-Path $OutputDir "update-at-boot.ps1"
 Copy-Item -Path $BootScript -Destination $BootScriptDest -Force
 
+$AssetsSource = Join-Path $ProjectRoot "assets"
+$AssetsDest = Join-Path $OutputDir "assets"
+if (Test-Path $AssetsSource) {
+    Copy-Item -Path $AssetsSource -Destination $AssetsDest -Recurse -Force
+}
+
 $ZipPath = Join-Path $OutputDir "emir-agent-windows-amd64.zip"
-Compress-Archive -Path $AgentBinaryPath, $PopupBinaryPath, $BootScriptDest -DestinationPath $ZipPath -Force
+Compress-Archive -Path $AgentBinaryPath, $PopupBinaryPath, $BootScriptDest, $AssetsDest -DestinationPath $ZipPath -Force
 
 Write-Host "Built: $AgentBinaryPath"
 Write-Host "Built: $PopupBinaryPath"
 Write-Host "Packaged: $ZipPath"
 Write-Host "Included: $BootScriptDest"
+Write-Host "Included: $AssetsDest"
 
 # Compute checksums
 $AgentHash = (Get-FileHash -Path $AgentBinaryPath -Algorithm SHA256).Hash.ToLower()

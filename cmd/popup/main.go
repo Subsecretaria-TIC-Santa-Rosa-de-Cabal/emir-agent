@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/api"
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/auth"
@@ -19,6 +20,16 @@ import (
 var Version = "0.1.0"
 
 func main() {
+	logPath := filepath.Join(os.TempDir(), "emir-agent-popup.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err == nil {
+		defer logFile.Close()
+		os.Stdout = logFile
+		os.Stderr = logFile
+	} else {
+		fmt.Fprintf(os.Stderr, "failed to open popup log file %s: %v\n", logPath, err)
+	}
+
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		fmt.Println(Version)
 		return
@@ -30,7 +41,6 @@ func main() {
 	}
 
 	var payload []byte
-	var err error
 	if os.Args[1] == "--file" {
 		if len(os.Args) < 3 {
 			fmt.Fprintln(os.Stderr, "missing file path for --file")

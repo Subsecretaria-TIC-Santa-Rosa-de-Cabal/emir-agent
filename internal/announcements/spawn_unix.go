@@ -10,9 +10,8 @@ import (
 )
 
 // startPopup launches the popup binary as a detached process on Unix-like
-// platforms. The log file handle is not used because the detached process
-// cannot inherit stdio reliably.
-func startPopup(popupPath string, encoded string, logFile *os.File) error {
-	cmd := exec.Command(popupPath, encoded)
+// platforms.
+func startPopup(popupPath string, announcementFile string) error {
+	cmd := exec.Command(popupPath, "--file", announcementFile)
 	return updater.StartDetached(cmd)
 }

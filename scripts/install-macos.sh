@@ -44,8 +44,7 @@ chmod +x "$INSTALL_DIR/update-at-boot-macos.sh"
 cat > /usr/local/etc/emir-agent/install.conf <<EOF
 REPO=$REPO
 VERSION=$VERSION
-AGENT_ASSET=emir-agent-macos-amd64
-POPUP_ASSET=emir-agent-popup-macos-amd64
+ARCHIVE=emir-agent-macos-amd64.tar.gz
 EOF
 
 if [ -n "$CORE_URL" ]; then

@@ -62,11 +62,11 @@ if (-not $TagVersion.StartsWith('v')) {
     $TagVersion = "v$TagVersion"
 }
 
-$AgentAssetName = "emir-agent-windows-amd64.exe"
-$PopupAssetName = "emir-agent-popup-windows-amd64.exe"
+$ArchiveName = "emir-agent-windows-amd64.zip"
 $ServiceName = "emir-agent"
 $AgentBinary = Join-Path $InstallDir "emir-agent.exe"
 $PopupBinary = Join-Path $InstallDir "emir-agent-popup.exe"
+$AssetsDir = Join-Path $InstallDir "assets"
 $StateDir = Join-Path $env:PROGRAMDATA "emir-agent"
 $StatePath = Join-Path $StateDir "state.json"
 
@@ -108,16 +108,12 @@ function Download-File {
     }
 }
 
-try {
-    $AgentUrl = "https://github.com/$Repo/releases/download/$TagVersion/$AgentAssetName"
-    Write-Host "Downloading $AgentAssetName from GitHub ($AgentUrl)..."
-    $AgentDownloadPath = Join-Path $TempDir $AgentAssetName
-    Download-File -Url $AgentUrl -OutFile $AgentDownloadPath
+$ArchiveUrl = "https://github.com/$Repo/releases/download/$TagVersion/$ArchiveName"
+$ArchivePath = Join-Path $TempDir $ArchiveName
 
-    $PopupUrl = "https://github.com/$Repo/releases/download/$TagVersion/$PopupAssetName"
-    Write-Host "Downloading $PopupAssetName from GitHub ($PopupUrl)..."
-    $PopupDownloadPath = Join-Path $TempDir $PopupAssetName
-    Download-File -Url $PopupUrl -OutFile $PopupDownloadPath
+try {
+    Write-Host "Downloading $ArchiveName from GitHub ($ArchiveUrl)..."
+    Download-File -Url $ArchiveUrl -OutFile $ArchivePath
 } catch {
     Write-Warning "Invoke-WebRequest failed, trying curl.exe..."
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
@@ -126,36 +122,49 @@ try {
         exit 1
     }
 
-    $AgentUrl = "https://github.com/$Repo/releases/download/$TagVersion/$AgentAssetName"
-    $AgentDownloadPath = Join-Path $TempDir $AgentAssetName
-    & curl.exe -fsSL -A 'emir-agent-installer' -o $AgentDownloadPath $AgentUrl
+    & curl.exe -fsSL -A 'emir-agent-installer' -o $ArchivePath $ArchiveUrl
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "curl.exe failed to download the agent binary."
-        exit 1
-    }
-
-    $PopupUrl = "https://github.com/$Repo/releases/download/$TagVersion/$PopupAssetName"
-    $PopupDownloadPath = Join-Path $TempDir $PopupAssetName
-    & curl.exe -fsSL -A 'emir-agent-installer' -o $PopupDownloadPath $PopupUrl
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "curl.exe failed to download the popup binary."
+        Write-Error "curl.exe failed to download the release archive."
         exit 1
     }
 }
 
-if (-not (Test-Path $AgentDownloadPath)) {
-    Write-Error "Downloaded agent binary was not found at $AgentDownloadPath"
-    exit 1
-}
-if (-not (Test-Path $PopupDownloadPath)) {
-    Write-Error "Downloaded popup binary was not found at $PopupDownloadPath"
+if (-not (Test-Path $ArchivePath)) {
+    Write-Error "Downloaded archive was not found at $ArchivePath"
     exit 1
 }
 
-Write-Host "Extracting to $InstallDir..."
+Write-Host "Extracting to $TempDir..."
+Expand-Archive -Path $ArchivePath -DestinationPath $TempDir -Force
+
+$ExtractedAgent = Join-Path $TempDir "emir-agent-windows-amd64.exe"
+$ExtractedPopup = Join-Path $TempDir "emir-agent-popup-windows-amd64.exe"
+$ExtractedAssets = Join-Path $TempDir "assets"
+
+if (-not (Test-Path $ExtractedAgent)) {
+    Write-Error "Agent binary was not found in the archive at $ExtractedAgent"
+    exit 1
+}
+if (-not (Test-Path $ExtractedPopup)) {
+    Write-Error "Popup binary was not found in the archive at $ExtractedPopup"
+    exit 1
+}
+
+Write-Host "Installing to $InstallDir..."
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-Move-Item -Path $AgentDownloadPath -Destination $AgentBinary -Force -ErrorAction SilentlyContinue
-Move-Item -Path $PopupDownloadPath -Destination $PopupBinary -Force -ErrorAction SilentlyContinue
+Move-Item -Path $ExtractedAgent -Destination $AgentBinary -Force -ErrorAction SilentlyContinue
+Move-Item -Path $ExtractedPopup -Destination $PopupBinary -Force -ErrorAction SilentlyContinue
+if (Test-Path $ExtractedAssets) {
+    New-Item -ItemType Directory -Path $AssetsDir -Force | Out-Null
+    Get-ChildItem -Path $ExtractedAssets -Recurse | ForEach-Object {
+        $dest = $_.FullName.Replace($ExtractedAssets, $AssetsDir)
+        if ($_.PSIsContainer) {
+            New-Item -ItemType Directory -Path $dest -Force | Out-Null
+        } else {
+            Copy-Item -Path $_.FullName -Destination $dest -Force
+        }
+    }
+}
 
 # Copy the boot update helper and record install metadata for recovery.
 $BootScript = Join-Path $PSScriptRoot "update-at-boot.ps1"
@@ -166,8 +175,7 @@ if (Test-Path $BootScript) {
 @(
     "REPO=$Repo"
     "VERSION=$Version"
-    "AGENT_ASSET=$AgentAssetName"
-    "POPUP_ASSET=$PopupAssetName"
+    "ARCHIVE=$ArchiveName"
 ) | Set-Content -Path (Join-Path $InstallDir "install.conf") -Encoding ASCII
 
 # Persist core URL as an environment variable for the service.

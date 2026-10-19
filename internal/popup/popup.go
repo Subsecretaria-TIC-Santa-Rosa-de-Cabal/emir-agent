@@ -6,6 +6,9 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	_ "image/jpeg"
+	_ "image/png"
+	_ "golang.org/x/image/webp"
 	"io"
 	"net/http"
 	"os"
@@ -640,10 +643,12 @@ func downloadImage(ctx context.Context, url string) (string, error) {
 	fmt.Fprintf(os.Stderr, "popup: GET %s\n", url)
 	resp, err := client.Do(req)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "popup: request failed: %v\n", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
+	fmt.Fprintf(os.Stderr, "popup: response status %d, content-length %s\n", resp.StatusCode, resp.Header.Get("Content-Length"))
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
@@ -651,15 +656,17 @@ func downloadImage(ctx context.Context, url string) (string, error) {
 	imgPath := filepath.Join(os.TempDir(), fmt.Sprintf("emir-announcement-%d.img", time.Now().UnixNano()))
 	out, err := os.Create(imgPath)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "popup: create temp file failed: %v\n", err)
 		return "", err
 	}
 
 	written, err := io.Copy(out, resp.Body)
 	out.Close()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "popup: copy body failed after %d bytes: %v\n", written, err)
 		return "", err
 	}
-	fmt.Fprintf(os.Stderr, "popup: downloaded %d bytes\n", written)
+	fmt.Fprintf(os.Stderr, "popup: downloaded %d bytes to %s\n", written, imgPath)
 	return imgPath, nil
 }
 
