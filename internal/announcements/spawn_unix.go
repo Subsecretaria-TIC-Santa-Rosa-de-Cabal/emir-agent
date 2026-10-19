@@ -3,7 +3,6 @@
 package announcements
 
 import (
-	"os"
 	"os/exec"
 
 	"github.com/Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent/internal/updater"
