@@ -2,11 +2,10 @@
 
 package main
 
-import "golang.org/x/sys/unix"
-
-// hasConsole reports whether the popup is attached to a terminal so stdout/stderr
-// can be used for debugging. When there is no terminal (e.g. spawned from a
-// background service) we redirect output to a log file.
+// hasConsole always reports false on Unix-like platforms. The popup is always
+// launched as a detached process by the agent, so redirecting output to a log
+// file is the safest default. This avoids importing platform-specific terminal
+// detection packages.
 func hasConsole() bool {
-	return unix.Isatty(unix.Stdout) || unix.Isatty(unix.Stderr)
+	return false
 }
