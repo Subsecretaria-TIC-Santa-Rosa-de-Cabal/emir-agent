@@ -20,6 +20,13 @@ import (
 var Version = "0.1.0"
 
 func main() {
+	// Handle --version before redirecting stdout/stderr to the log file so
+	// callers can capture the version string.
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		fmt.Println(Version)
+		return
+	}
+
 	logPath := filepath.Join(os.TempDir(), "emir-agent-popup.log")
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err == nil {
@@ -28,11 +35,6 @@ func main() {
 		os.Stderr = logFile
 	} else {
 		fmt.Fprintf(os.Stderr, "failed to open popup log file %s: %v\n", logPath, err)
-	}
-
-	if len(os.Args) > 1 && os.Args[1] == "--version" {
-		fmt.Println(Version)
-		return
 	}
 
 	if len(os.Args) < 2 {
