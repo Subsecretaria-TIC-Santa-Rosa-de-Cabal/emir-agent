@@ -140,8 +140,9 @@ func (g *announcementGame) drawBackground(screen *ebiten.Image) {
 		return
 	}
 
-	// Cover scaling: fill entire window, cropping edges if aspect ratios differ.
-	scale := max(float64(g.screenWidth)/float64(iw), float64(g.screenHeight)/float64(ih))
+	// Contain scaling: fit the whole image inside the window, keeping black
+	// bars on the sides or top/bottom when the aspect ratios differ.
+	scale := min(float64(g.screenWidth)/float64(iw), float64(g.screenHeight)/float64(ih))
 	dw := float64(iw) * scale
 	dh := float64(ih) * scale
 	dx := (float64(g.screenWidth) - dw) / 2
