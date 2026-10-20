@@ -20,7 +20,8 @@ param(
     [string]$Repo = "Subsecretaria-TIC-Santa-Rosa-de-Cabal/emir-agent",
     [string]$InstallDir = "C:\Program Files\emir-agent",
     [bool]$UpdateAtStartup = $true,
-    [int]$UpdateBootDelaySeconds = 90
+    [int]$UpdateBootDelaySeconds = 90,
+    [switch]$SkipPairing
 )
 
 $ErrorActionPreference = "Stop"
@@ -208,13 +209,17 @@ function Grant-ReadAccessToAuthenticatedUsers {
     Set-Acl -Path $Path -AclObject $acl
 }
 
-# Pair interactively before running as a service.
-Write-Host "`nPairing the agent with emir-core..."
-& $AgentBinary --pair
+# Pair interactively before running as a service unless requested to skip.
+if ($SkipPairing) {
+    Write-Host "`nSkipping interactive pairing (--SkipPairing)."
+} else {
+    Write-Host "`nPairing the agent with emir-core..."
+    & $AgentBinary --pair
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Pairing failed. The service will not be started."
-    exit 1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Pairing failed. The service will not be started."
+        exit 1
+    }
 }
 
 # Allow the logged-on user (and any future interactive user) to read the state
