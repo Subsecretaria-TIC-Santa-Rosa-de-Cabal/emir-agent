@@ -136,6 +136,8 @@ if (-not (Test-Path $ArchivePath)) {
 }
 
 Write-Host "Extracting to $TempDir..."
+Remove-Item -Path $TempDir -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
 Expand-Archive -Path $ArchivePath -DestinationPath $TempDir -Force
 
 $ExtractedAgent = Join-Path $TempDir "emir-agent-windows-amd64.exe"
@@ -157,10 +159,15 @@ Move-Item -Path $ExtractedAgent -Destination $AgentBinary -Force -ErrorAction Si
 Move-Item -Path $ExtractedPopup -Destination $PopupBinary -Force -ErrorAction SilentlyContinue
 if (Test-Path $ExtractedAssets) {
     New-Item -ItemType Directory -Path $AssetsDir -Force | Out-Null
-    Get-ChildItem -Path $ExtractedAssets -Recurse | ForEach-Object {
-        $dest = $_.FullName.Replace($ExtractedAssets, $AssetsDir)
-        if ($_.PSIsContainer) {
-            New-Item -ItemType Directory -Path $dest -Force | Out-Null
+    $resolvedExtracted = Resolve-Path $ExtractedAssets
+    Get-ChildItem -Path $resolvedExtracted -Recurse -File | ForEach-Object {
+        $relativePath = $_.FullName.Substring($resolvedExtracted.Path.Length).TrimStart('\', '/')
+        $dest = Join-Path $AssetsDir $relativePath
+        $destDir = Split-Path -Parent $dest
+        New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+
+        if ($_.FullName -eq $dest) {
+            Write-Warning "Skipping copy of $($_.FullName) because source and destination are the same path."
         } else {
             Copy-Item -Path $_.FullName -Destination $dest -Force
         }
