@@ -7,10 +7,13 @@
     waiting for the agent cycle. The popup is shown without reporting an
     impression if no agent credentials are found.
 .PARAMETER ImageUrl
-    URL of the image to show in the popup.
+    URL of the image to show in the popup. Ignored when -NoImage is set.
+.PARAMETER NoImage
+    If set, builds a test announcement without an image (black background).
 #>
 param(
-    [string]$ImageUrl = "https://via.placeholder.com/1920x1080.png/3366cc/ffffff?text=Test+Image"
+    [string]$ImageUrl = "https://via.placeholder.com/1920x1080.png/3366cc/ffffff?text=Test+Image",
+    [switch]$NoImage
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,13 +41,18 @@ Copy-Item -Path "$ProjectRoot\assets\notification.mp3" -Destination "$AssetsDir\
 $InvertedExclamation = [char]0x00A1
 $Aacute              = [char]0x00E1
 
-$Announcement = @{
-    identifier         = [Guid]::NewGuid().ToString()
-    title              = "$InvertedExclamation`Explora nuestras nuevas funcionalidades!"
-    description        = "Hemos lanzado nuevas herramientas que te permitir$Aacute`n ser m$Aacute`s productivo, trabajar de forma m$Aacute`s eficiente y disfrutar de una mejor experiencia en la plataforma."
-    link_url           = "https://emir.gov.co"
-    image_download_url = $ImageUrl
-} | ConvertTo-Json
+$AnnouncementProps = [ordered]@{
+    identifier  = [Guid]::NewGuid().ToString()
+    title       = "$InvertedExclamation`Explora nuestras nuevas funcionalidades!"
+    description = "Hemos lanzado nuevas herramientas que te permitir$Aacute`n ser m$Aacute`s productivo, trabajar de forma m$Aacute`s eficiente y disfrutar de una mejor experiencia en la plataforma."
+    link_url    = "https://emir.gov.co"
+}
+
+if (-not $NoImage) {
+    $AnnouncementProps['image_download_url'] = $ImageUrl
+}
+
+$Announcement = $AnnouncementProps | ConvertTo-Json
 
 $JsonPath = Join-Path $DistDir "announcement.json"
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)

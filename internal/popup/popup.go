@@ -34,7 +34,7 @@ import (
 
 // UI constants (in device-independent pixels) for a 1920x1080 reference design.
 const (
-	logoMaxWidth   = 160
+	logoMaxWidth   = 146
 	closeBtnSize   = 40
 	closeBtnMargin = 24
 	logoMargin     = 24
@@ -120,8 +120,13 @@ func (g *announcementGame) Draw(screen *ebiten.Image) {
 	// Draw close button at top-right.
 	g.drawCloseButton(screen)
 
-	// Draw info panel at bottom-left.
-	g.drawInfoPanel(screen)
+	// Draw text info either over the image (bottom panel) or centered on a
+	// black background when there is no image.
+	if g.img != nil {
+		g.drawInfoPanel(screen)
+	} else {
+		g.drawCenteredInfo(screen)
+	}
 }
 
 func (g *announcementGame) drawBackground(screen *ebiten.Image) {
@@ -173,7 +178,7 @@ func (g *announcementGame) drawLogo(screen *ebiten.Image) {
 
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Scale(scale, scale)
-	op.GeoM.Translate(float64(logoMargin), float64(logoMargin))
+	op.GeoM.Translate(0, 0)
 	op.ColorScale.Scale(1, 1, 1, float32(g.alpha))
 	screen.DrawImage(g.logo, op)
 
@@ -304,6 +309,107 @@ func (g *announcementGame) drawInfoPanel(screen *ebiten.Image) {
 	}
 }
 
+func (g *announcementGame) drawCenteredInfo(screen *ebiten.Image) {
+	titleText := g.ann.Title
+	descText := ""
+	if g.ann.Description != nil {
+		descText = *g.ann.Description
+	}
+	g.linkURL = ""
+	if g.ann.LinkURL != nil {
+		g.linkURL = *g.ann.LinkURL
+	}
+
+	if titleText == "" && descText == "" && g.linkURL == "" {
+		return
+	}
+
+	// Use a comfortable reading width, but keep margins on small windows.
+	panelWidth := g.screenWidth - panelMargin*2
+	if panelWidth < 320 {
+		panelWidth = 320
+	}
+	if panelWidth > 800 {
+		panelWidth = 800
+	}
+	availableTextWidth := panelWidth - panelPadding*2
+
+	titleLines := wrapText(titleText, g.titleFace, availableTextWidth)
+	descLines := wrapText(descText, g.descriptionFace, availableTextWidth)
+
+	titleLineHeight := g.titleFace.Metrics().Height.Ceil()
+	descLineHeight := g.descriptionFace.Metrics().Height.Ceil()
+	linkLineHeight := g.linkFace.Metrics().Height.Ceil()
+
+	linkText := "Conocer mas"
+
+	gapTitleDesc := 0
+	if len(titleLines) > 0 && len(descLines) > 0 {
+		gapTitleDesc = 8
+	}
+	gapDescLink := 0
+	if (len(titleLines) > 0 || len(descLines) > 0) && g.linkURL != "" {
+		gapDescLink = 12
+	}
+
+	totalHeight := len(titleLines)*titleLineHeight + gapTitleDesc +
+		len(descLines)*descLineHeight + gapDescLink + linkLineHeight
+	if g.linkURL == "" {
+		totalHeight -= linkLineHeight
+	}
+
+	startY := (g.screenHeight - totalHeight) / 2
+	if startY < panelMargin {
+		startY = panelMargin
+	}
+
+	drawer := &font.Drawer{
+		Dst: screen,
+		Src: image.NewUniform(applyAlpha(color.NRGBA{R: 255, G: 255, B: 255, A: 255}, g.alpha)),
+		Face: g.titleFace,
+	}
+
+	// Draw title, centered horizontally.
+	textY := startY
+	for _, line := range titleLines {
+		lineWidth := font.MeasureString(g.titleFace, line).Ceil()
+		x := (g.screenWidth - lineWidth) / 2
+		drawer.Dot = fixed.P(x, textY+g.titleFace.Metrics().Ascent.Ceil())
+		drawer.DrawString(line)
+		textY += titleLineHeight
+	}
+
+	// Draw description, centered horizontally.
+	if len(descLines) > 0 {
+		textY += gapTitleDesc
+		drawer.Src = image.NewUniform(applyAlpha(color.NRGBA{R: 220, G: 220, B: 220, A: 255}, g.alpha))
+		drawer.Face = g.descriptionFace
+		for _, line := range descLines {
+			lineWidth := font.MeasureString(g.descriptionFace, line).Ceil()
+			x := (g.screenWidth - lineWidth) / 2
+			drawer.Dot = fixed.P(x, textY+g.descriptionFace.Metrics().Ascent.Ceil())
+			drawer.DrawString(line)
+			textY += descLineHeight
+		}
+	}
+
+	// Draw link, centered horizontally.
+	if g.linkURL != "" {
+		textY += gapDescLink
+		linkY := textY
+		linkW := textWidth([]string{linkText}, g.linkFace) + linkIconSize + 8
+		linkX := (g.screenWidth - linkW) / 2
+		g.linkRect = rect{x: linkX, y: linkY, w: linkW, h: linkLineHeight}
+
+		g.drawLinkIcon(screen, linkX, linkY+linkLineHeight/2-linkIconSize/2)
+
+		drawer.Src = image.NewUniform(applyAlpha(color.NRGBA{R: 96, G: 165, B: 250, A: 255}, g.alpha))
+		drawer.Face = g.linkFace
+		drawer.Dot = fixed.P(linkX+linkIconSize+8, linkY+g.linkFace.Metrics().Ascent.Ceil())
+		drawer.DrawString(linkText)
+	}
+}
+
 func (g *announcementGame) drawLinkIcon(screen *ebiten.Image, x, y int) {
 	icon := ebiten.NewImage(linkIconSize, linkIconSize)
 	c := applyAlpha(color.NRGBA{R: 96, G: 165, B: 250, A: 255}, g.alpha)
@@ -331,14 +437,17 @@ func (g *announcementGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 // Show displays the announcement popup. The image is downloaded asynchronously
 // so the window appears immediately; the background stays black until the image
-// is ready.
+// is ready. If the announcement has no image, the popup is shown with a black
+// background and the text content centered.
 func Show(ctx context.Context, apiClient *api.Client, ann models.AgentAnnouncement) error {
-	if ann.ImageDownloadURL == "" {
-		return fmt.Errorf("announcement has no image download URL")
-	}
+	hasImage := ann.ImageDownloadURL != ""
 
 	fmt.Fprintf(os.Stderr, "popup: showing announcement %s\n", ann.Identifier)
-	fmt.Fprintf(os.Stderr, "popup: image URL %s\n", ann.ImageDownloadURL)
+	if hasImage {
+		fmt.Fprintf(os.Stderr, "popup: image URL %s\n", ann.ImageDownloadURL)
+	} else {
+		fmt.Fprintln(os.Stderr, "popup: no image URL; using black background")
+	}
 
 	logoPath, err := getLogoPath()
 	if err != nil {
@@ -356,8 +465,8 @@ func Show(ctx context.Context, apiClient *api.Client, ann models.AgentAnnounceme
 	playNotificationSound()
 
 	screenWidth, screenHeight := ebiten.ScreenSizeInFullscreen()
-	windowWidth := int(float64(screenWidth) * 0.8)
-	windowHeight := int(float64(screenHeight) * 0.8)
+	windowWidth := int(float64(screenWidth) * 0.5)
+	windowHeight := int(float64(screenHeight) * 0.5)
 	posX := (screenWidth - windowWidth) / 2
 	posY := (screenHeight - windowHeight) / 2
 
@@ -379,27 +488,29 @@ func Show(ctx context.Context, apiClient *api.Client, ann models.AgentAnnounceme
 	}
 
 	// Download the image asynchronously so the window opens immediately.
-	go func() {
-		fmt.Fprintln(os.Stderr, "popup: starting image download")
-		imgPath, err := downloadImage(ctx, ann.ImageDownloadURL)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "popup: image download failed: %v\n", err)
-			return
-		}
-		fmt.Fprintf(os.Stderr, "popup: image saved to %s\n", imgPath)
-		defer os.Remove(imgPath)
+	if hasImage {
+		go func() {
+			fmt.Fprintln(os.Stderr, "popup: starting image download")
+			imgPath, err := downloadImage(ctx, ann.ImageDownloadURL)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "popup: image download failed: %v\n", err)
+				return
+			}
+			fmt.Fprintf(os.Stderr, "popup: image saved to %s\n", imgPath)
+			defer os.Remove(imgPath)
 
-		img, _, err := ebitenutil.NewImageFromFile(imgPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "popup: load image failed: %v\n", err)
-			return
-		}
+			img, _, err := ebitenutil.NewImageFromFile(imgPath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "popup: load image failed: %v\n", err)
+				return
+			}
 
-		game.imgMu.Lock()
-		game.img = img
-		game.imgMu.Unlock()
-		fmt.Fprintln(os.Stderr, "popup: image ready")
-	}()
+			game.imgMu.Lock()
+			game.img = img
+			game.imgMu.Unlock()
+			fmt.Fprintln(os.Stderr, "popup: image ready")
+		}()
+	}
 
 	// Report impression right before the window is shown.
 	if apiClient != nil {
